@@ -1,0 +1,1 @@
+CREATE INDEX "sales_status_created_at_idx" ON "sales" ("status","created_at");
