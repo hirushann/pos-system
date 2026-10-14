@@ -127,10 +127,10 @@ export async function searchCheckoutParts(
   if (rawQuery && rawQuery.length > 0) {
     const pattern = `%${rawQuery.toLowerCase()}%`;
     conditions.push(
-      sql`(${products.name} ILIKE ${pattern} OR ${products.sku} ILIKE ${pattern} OR ${products.partNumber} ILIKE ${pattern} OR EXISTS (
+      sql`(${products.name} LIKE ${pattern} OR ${products.sku} LIKE ${pattern} OR ${products.partNumber} LIKE ${pattern} OR EXISTS (
         SELECT 1 FROM ${productPartNumbers}
         WHERE ${productPartNumbers.productId} = ${products.id}
-        AND ${productPartNumbers.partNumber} ILIKE ${pattern}
+        AND ${productPartNumbers.partNumber} LIKE ${pattern}
       ))`,
     );
   }

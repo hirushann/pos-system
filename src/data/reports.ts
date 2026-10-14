@@ -1,7 +1,21 @@
 import { db } from '@/src/db';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { getColomboDateString, getColomboDayRange } from '@/src/lib/dates';
 import Decimal from 'decimal.js';
+
+/**
+ * Runs a raw SQL statement and returns its rows. The mysql2 driver resolves
+ * raw queries to `[rows, fields]`.
+ */
+async function query<T>(statement: SQL): Promise<T[]> {
+  const [rows] = (await db.execute(statement)) as unknown as [T[], unknown];
+  return rows;
+}
+
+/** DATETIME(3) literal in UTC, e.g. "2026-10-14 15:04:05.123". */
+function toSqlDateTime(date: Date): string {
+  return date.toISOString().replace('T', ' ').replace('Z', '');
+}
 
 export interface MetricWithComparison {
   value: string; // Formatted or raw string
@@ -164,7 +178,7 @@ export async function getDashboardSummaryMetrics(): Promise<DashboardMetricsSumm
 
   // Single query for today and last week aggregates in SQL
   const querySingleDay = async (startUtc: Date, endUtc: Date) => {
-    const res = await db.execute<{
+    const res = await query<{
       sales_count: string;
       total_revenue: string;
       total_discount: string;
@@ -172,13 +186,13 @@ export async function getDashboardSummaryMetrics(): Promise<DashboardMetricsSumm
       average_sale: string;
     }>(sql`
       SELECT
-        COUNT(s.id)::int AS sales_count,
-        COALESCE(SUM(s.total), 0)::numeric(12,2) AS total_revenue,
-        COALESCE(SUM(s.discount), 0)::numeric(12,2) AS total_discount,
-        (COALESCE(SUM(items.items_margin), 0) - COALESCE(SUM(s.discount), 0))::numeric(12,2) AS gross_profit,
+        CAST(COUNT(s.id) AS SIGNED) AS sales_count,
+        CAST(COALESCE(SUM(s.total), 0) AS DECIMAL(12,2)) AS total_revenue,
+        CAST(COALESCE(SUM(s.discount), 0) AS DECIMAL(12,2)) AS total_discount,
+        CAST((COALESCE(SUM(items.items_margin), 0) - COALESCE(SUM(s.discount), 0)) AS DECIMAL(12,2)) AS gross_profit,
         CASE
-          WHEN COUNT(s.id) > 0 THEN (SUM(s.total) / COUNT(s.id))::numeric(12,2)
-          ELSE 0::numeric(12,2)
+          WHEN COUNT(s.id) > 0 THEN CAST((SUM(s.total) / COUNT(s.id)) AS DECIMAL(12,2))
+          ELSE CAST(0 AS DECIMAL(12,2))
         END AS average_sale
       FROM sales s
       LEFT JOIN (
@@ -189,11 +203,11 @@ export async function getDashboardSummaryMetrics(): Promise<DashboardMetricsSumm
         GROUP BY si.sale_id
       ) items ON items.sale_id = s.id
       WHERE s.status != 'voided'
-        AND s.created_at >= ${startUtc.toISOString()}::timestamptz
-        AND s.created_at <= ${endUtc.toISOString()}::timestamptz;
+        AND s.created_at >= ${toSqlDateTime(startUtc)}
+        AND s.created_at <= ${toSqlDateTime(endUtc)};
     `);
 
-    return res.rows[0] ?? {
+    return res[0] ?? {
       sales_count: '0',
       total_revenue: '0.00',
       total_discount: '0.00',
@@ -234,25 +248,25 @@ export async function getLast30DaysRevenue(): Promise<DailyRevenueChartPoint[]> 
   const startRange = getColomboDayRange(startDayStr);
   const endRange = getColomboDayRange(todayStr);
 
-  const res = await db.execute<{
+  const res = await query<{
     day: string;
     revenue: string;
     sales_count: string;
   }>(sql`
     SELECT
-      to_char(created_at AT TIME ZONE 'Asia/Colombo', 'YYYY-MM-DD') AS day,
-      COALESCE(SUM(total), 0)::numeric(12,2) AS revenue,
-      COUNT(id)::int AS sales_count
+      DATE_FORMAT(CONVERT_TZ(created_at, '+00:00', '+05:30'), '%Y-%m-%d') AS day,
+      CAST(COALESCE(SUM(total), 0) AS DECIMAL(12,2)) AS revenue,
+      CAST(COUNT(id) AS SIGNED) AS sales_count
     FROM sales
     WHERE status != 'voided'
-      AND created_at >= ${startRange.startUtc.toISOString()}::timestamptz
-      AND created_at <= ${endRange.endUtc.toISOString()}::timestamptz
-    GROUP BY to_char(created_at AT TIME ZONE 'Asia/Colombo', 'YYYY-MM-DD')
+      AND created_at >= ${toSqlDateTime(startRange.startUtc)}
+      AND created_at <= ${toSqlDateTime(endRange.endUtc)}
+    GROUP BY day
     ORDER BY day ASC;
   `);
 
   const resultMap = new Map<string, { revenue: string; count: number }>();
-  for (const row of res.rows) {
+  for (const row of res) {
     resultMap.set(row.day, {
       revenue: row.revenue,
       count: Number(row.sales_count),
@@ -304,7 +318,7 @@ export async function getTopParts(
   const endRange = getColomboDayRange(endDateStr || startDateStr || getColomboDateString(new Date()));
 
   const [resQty, resRev] = await Promise.all([
-    db.execute<{
+    query<{
       product_id: number;
       sku: string;
       part_number: string;
@@ -317,19 +331,19 @@ export async function getTopParts(
         p.sku AS sku,
         si.part_number AS part_number,
         si.product_name AS product_name,
-        SUM(si.quantity)::int AS total_quantity,
-        COALESCE(SUM(si.line_total), 0)::numeric(12,2) AS total_revenue
+        CAST(SUM(si.quantity) AS SIGNED) AS total_quantity,
+        CAST(COALESCE(SUM(si.line_total), 0) AS DECIMAL(12,2)) AS total_revenue
       FROM sale_items si
       JOIN sales s ON s.id = si.sale_id
       JOIN products p ON p.id = si.product_id
       WHERE s.status != 'voided'
-        AND s.created_at >= ${startRange.startUtc.toISOString()}::timestamptz
-        AND s.created_at <= ${endRange.endUtc.toISOString()}::timestamptz
+        AND s.created_at >= ${toSqlDateTime(startRange.startUtc)}
+        AND s.created_at <= ${toSqlDateTime(endRange.endUtc)}
       GROUP BY p.id, p.sku, si.part_number, si.product_name
       ORDER BY total_quantity DESC, total_revenue DESC
       LIMIT 10;
     `),
-    db.execute<{
+    query<{
       product_id: number;
       sku: string;
       part_number: string;
@@ -342,14 +356,14 @@ export async function getTopParts(
         p.sku AS sku,
         si.part_number AS part_number,
         si.product_name AS product_name,
-        SUM(si.quantity)::int AS total_quantity,
-        COALESCE(SUM(si.line_total), 0)::numeric(12,2) AS total_revenue
+        CAST(SUM(si.quantity) AS SIGNED) AS total_quantity,
+        CAST(COALESCE(SUM(si.line_total), 0) AS DECIMAL(12,2)) AS total_revenue
       FROM sale_items si
       JOIN sales s ON s.id = si.sale_id
       JOIN products p ON p.id = si.product_id
       WHERE s.status != 'voided'
-        AND s.created_at >= ${startRange.startUtc.toISOString()}::timestamptz
-        AND s.created_at <= ${endRange.endUtc.toISOString()}::timestamptz
+        AND s.created_at >= ${toSqlDateTime(startRange.startUtc)}
+        AND s.created_at <= ${toSqlDateTime(endRange.endUtc)}
       GROUP BY p.id, p.sku, si.part_number, si.product_name
       ORDER BY total_revenue DESC, total_quantity DESC
       LIMIT 10;
@@ -357,7 +371,7 @@ export async function getTopParts(
   ]);
 
   return {
-    byQuantity: resQty.rows.map((r) => ({
+    byQuantity: resQty.map((r) => ({
       productId: Number(r.product_id),
       sku: r.sku,
       partNumber: r.part_number,
@@ -365,7 +379,7 @@ export async function getTopParts(
       totalQuantity: Number(r.total_quantity),
       totalRevenue: r.total_revenue,
     })),
-    byRevenue: resRev.rows.map((r) => ({
+    byRevenue: resRev.map((r) => ({
       productId: Number(r.product_id),
       sku: r.sku,
       partNumber: r.part_number,
@@ -380,13 +394,13 @@ export async function getTopParts(
  * 4. Low stock count: active products with stock_qty <= reorder_level
  */
 export async function getLowStockCount(): Promise<number> {
-  const res = await db.execute<{ count: string }>(sql`
-    SELECT COUNT(*)::int AS count
+  const res = await query<{ count: string }>(sql`
+    SELECT CAST(COUNT(*) AS SIGNED) AS count
     FROM products
     WHERE is_active = true AND stock_qty <= reorder_level;
   `);
 
-  return Number(res.rows[0]?.count ?? 0);
+  return Number(res[0]?.count ?? 0);
 }
 
 /**
@@ -400,7 +414,7 @@ export async function getSalesByCashier(
   const startRange = getColomboDayRange(startDateStr || getColomboDateString(new Date()));
   const endRange = getColomboDayRange(endDateStr || startDateStr || getColomboDateString(new Date()));
 
-  const res = await db.execute<{
+  const res = await query<{
     cashier_id: string;
     cashier_name: string | null;
     cashier_email: string | null;
@@ -414,13 +428,13 @@ export async function getSalesByCashier(
       s.cashier_id,
       u.name AS cashier_name,
       u.email AS cashier_email,
-      COUNT(s.id)::int AS sales_count,
-      COALESCE(SUM(s.total), 0)::numeric(12,2) AS total_revenue,
-      COALESCE(SUM(CASE WHEN s.amount_tendered IS NOT NULL THEN s.total ELSE 0 END), 0)::numeric(12,2) AS cash_revenue,
-      COALESCE(SUM(CASE WHEN s.amount_tendered IS NULL THEN s.total ELSE 0 END), 0)::numeric(12,2) AS card_revenue,
-      (COALESCE(SUM(items.items_margin), 0) - COALESCE(SUM(s.discount), 0))::numeric(12,2) AS gross_profit
+      CAST(COUNT(s.id) AS SIGNED) AS sales_count,
+      CAST(COALESCE(SUM(s.total), 0) AS DECIMAL(12,2)) AS total_revenue,
+      CAST(COALESCE(SUM(CASE WHEN s.amount_tendered IS NOT NULL THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS cash_revenue,
+      CAST(COALESCE(SUM(CASE WHEN s.amount_tendered IS NULL THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS card_revenue,
+      CAST((COALESCE(SUM(items.items_margin), 0) - COALESCE(SUM(s.discount), 0)) AS DECIMAL(12,2)) AS gross_profit
     FROM sales s
-    LEFT JOIN "user" u ON u.id = s.cashier_id
+    LEFT JOIN \`user\` u ON u.id = s.cashier_id
     LEFT JOIN (
       SELECT
         si.sale_id,
@@ -429,13 +443,13 @@ export async function getSalesByCashier(
       GROUP BY si.sale_id
     ) items ON items.sale_id = s.id
     WHERE s.status != 'voided'
-      AND s.created_at >= ${startRange.startUtc.toISOString()}::timestamptz
-      AND s.created_at <= ${endRange.endUtc.toISOString()}::timestamptz
+      AND s.created_at >= ${toSqlDateTime(startRange.startUtc)}
+      AND s.created_at <= ${toSqlDateTime(endRange.endUtc)}
     GROUP BY s.cashier_id, u.name, u.email
     ORDER BY total_revenue DESC;
   `);
 
-  return res.rows.map((r) => ({
+  return res.map((r) => ({
     cashierId: r.cashier_id,
     cashierName: r.cashier_name || 'Unknown Cashier',
     cashierEmail: r.cashier_email || '-',
@@ -459,7 +473,7 @@ export async function getDailySalesReport(
   const startRange = getColomboDayRange(startDateStr || getColomboDateString(new Date()));
   const endRange = getColomboDayRange(endDateStr || startDateStr || getColomboDateString(new Date()));
 
-  const res = await db.execute<{
+  const res = await query<{
     sale_date: string;
     sales_count: string;
     revenue: string;
@@ -469,13 +483,13 @@ export async function getDailySalesReport(
     card: string;
   }>(sql`
     SELECT
-      to_char(s.created_at AT TIME ZONE 'Asia/Colombo', 'YYYY-MM-DD') AS sale_date,
-      COUNT(s.id)::int AS sales_count,
-      COALESCE(SUM(s.total), 0)::numeric(12,2) AS revenue,
-      COALESCE(SUM(s.discount), 0)::numeric(12,2) AS discount,
-      (COALESCE(SUM(items.items_margin), 0) - COALESCE(SUM(s.discount), 0))::numeric(12,2) AS profit,
-      COALESCE(SUM(CASE WHEN s.amount_tendered IS NOT NULL THEN s.total ELSE 0 END), 0)::numeric(12,2) AS cash,
-      COALESCE(SUM(CASE WHEN s.amount_tendered IS NULL THEN s.total ELSE 0 END), 0)::numeric(12,2) AS card
+      DATE_FORMAT(CONVERT_TZ(s.created_at, '+00:00', '+05:30'), '%Y-%m-%d') AS sale_date,
+      CAST(COUNT(s.id) AS SIGNED) AS sales_count,
+      CAST(COALESCE(SUM(s.total), 0) AS DECIMAL(12,2)) AS revenue,
+      CAST(COALESCE(SUM(s.discount), 0) AS DECIMAL(12,2)) AS discount,
+      CAST((COALESCE(SUM(items.items_margin), 0) - COALESCE(SUM(s.discount), 0)) AS DECIMAL(12,2)) AS profit,
+      CAST(COALESCE(SUM(CASE WHEN s.amount_tendered IS NOT NULL THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS cash,
+      CAST(COALESCE(SUM(CASE WHEN s.amount_tendered IS NULL THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS card
     FROM sales s
     LEFT JOIN (
       SELECT
@@ -485,13 +499,13 @@ export async function getDailySalesReport(
       GROUP BY si.sale_id
     ) items ON items.sale_id = s.id
     WHERE s.status != 'voided'
-      AND s.created_at >= ${startRange.startUtc.toISOString()}::timestamptz
-      AND s.created_at <= ${endRange.endUtc.toISOString()}::timestamptz
-    GROUP BY to_char(s.created_at AT TIME ZONE 'Asia/Colombo', 'YYYY-MM-DD')
+      AND s.created_at >= ${toSqlDateTime(startRange.startUtc)}
+      AND s.created_at <= ${toSqlDateTime(endRange.endUtc)}
+    GROUP BY sale_date
     ORDER BY sale_date DESC;
   `);
 
-  return res.rows.map((r) => ({
+  return res.map((r) => ({
     saleDate: r.sale_date,
     salesCount: Number(r.sales_count),
     revenue: r.revenue,
@@ -509,7 +523,7 @@ export async function getDailySalesReport(
  */
 export async function getStockValuationReport(): Promise<StockValuationReport> {
   const [catRes, totalRes] = await Promise.all([
-    db.execute<{
+    query<{
       category_id: number;
       category_name: string;
       items_count: string;
@@ -519,29 +533,29 @@ export async function getStockValuationReport(): Promise<StockValuationReport> {
       SELECT
         c.id AS category_id,
         c.name AS category_name,
-        COUNT(p.id)::int AS items_count,
-        COALESCE(SUM(p.stock_qty), 0)::int AS total_units,
-        COALESCE(SUM(p.stock_qty * p.cost_price), 0)::numeric(12,2) AS valuation
+        CAST(COUNT(p.id) AS SIGNED) AS items_count,
+        CAST(COALESCE(SUM(p.stock_qty), 0) AS SIGNED) AS total_units,
+        CAST(COALESCE(SUM(p.stock_qty * p.cost_price), 0) AS DECIMAL(12,2)) AS valuation
       FROM categories c
       LEFT JOIN products p ON p.category_id = c.id AND p.is_active = true
       GROUP BY c.id, c.name
       ORDER BY valuation DESC, c.name ASC;
     `),
-    db.execute<{
+    query<{
       total_items: string;
       total_units: string;
       total_valuation: string;
     }>(sql`
       SELECT
-        COUNT(p.id)::int AS total_items,
-        COALESCE(SUM(p.stock_qty), 0)::int AS total_units,
-        COALESCE(SUM(p.stock_qty * p.cost_price), 0)::numeric(12,2) AS total_valuation
+        CAST(COUNT(p.id) AS SIGNED) AS total_items,
+        CAST(COALESCE(SUM(p.stock_qty), 0) AS SIGNED) AS total_units,
+        CAST(COALESCE(SUM(p.stock_qty * p.cost_price), 0) AS DECIMAL(12,2)) AS total_valuation
       FROM products p
       WHERE p.is_active = true;
     `),
   ]);
 
-  const categories = catRes.rows.map((r) => ({
+  const categories = catRes.map((r) => ({
     categoryId: Number(r.category_id),
     categoryName: r.category_name,
     itemsCount: Number(r.items_count),
@@ -549,7 +563,7 @@ export async function getStockValuationReport(): Promise<StockValuationReport> {
     valuation: r.valuation,
   }));
 
-  const totalRow = totalRes.rows[0];
+  const totalRow = totalRes[0];
 
   return {
     categories,
@@ -565,7 +579,7 @@ export async function getStockValuationReport(): Promise<StockValuationReport> {
  * Excludes voided sales.
  */
 export async function getDeadStockReport(): Promise<DeadStockItem[]> {
-  const res = await db.execute<{
+  const res = await query<{
     id: number;
     sku: string;
     part_number: string;
@@ -586,11 +600,11 @@ export async function getDeadStockReport(): Promise<DeadStockItem[]> {
       c.name AS category_name,
       b.name AS brand_name,
       p.stock_qty,
-      p.cost_price::numeric(12,2),
-      p.price::numeric(12,2) AS selling_price,
-      (p.stock_qty * p.cost_price)::numeric(12,2) AS tied_up_capital,
+      CAST(p.cost_price AS DECIMAL(12,2)) AS cost_price,
+      CAST(p.price AS DECIMAL(12,2)) AS selling_price,
+      CAST((p.stock_qty * p.cost_price) AS DECIMAL(12,2)) AS tied_up_capital,
       (
-        SELECT to_char(MAX(s.created_at) AT TIME ZONE 'Asia/Colombo', 'YYYY-MM-DD HH24:MI')
+        SELECT DATE_FORMAT(CONVERT_TZ(MAX(s.created_at), '+00:00', '+05:30'), '%Y-%m-%d %H:%i')
         FROM sale_items si
         JOIN sales s ON s.id = si.sale_id
         WHERE si.product_id = p.id AND s.status != 'voided'
@@ -606,12 +620,12 @@ export async function getDeadStockReport(): Promise<DeadStockItem[]> {
         JOIN sales s ON s.id = si.sale_id
         WHERE si.product_id = p.id
           AND s.status != 'voided'
-          AND s.created_at >= NOW() - INTERVAL '90 days'
+          AND s.created_at >= UTC_TIMESTAMP(3) - INTERVAL 90 DAY
       )
     ORDER BY tied_up_capital DESC, p.name ASC;
   `);
 
-  return res.rows.map((r) => ({
+  return res.map((r) => ({
     id: Number(r.id),
     sku: r.sku,
     partNumber: r.part_number,

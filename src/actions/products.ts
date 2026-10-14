@@ -17,18 +17,18 @@ import { requireUser, assertOwner } from '@/src/lib/auth-guards';
 import { eq, and, sql, count } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { mapDatabaseError } from '@/src/lib/db-errors';
+import { getDbErrorKind, mapDatabaseError } from '@/src/lib/db-errors';
 
-export const nameInputSchema = z.object({
+const nameInputSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(100, 'Name cannot exceed 100 characters'),
 });
 
-export const vehicleModelInputSchema = z.object({
+const vehicleModelInputSchema = z.object({
   makeId: z.number().int().positive('Valid vehicle make is required'),
   name: z.string().trim().min(1, 'Model name is required').max(100, 'Model name cannot exceed 100 characters'),
 });
 
-export const productIdInputSchema = z.object({
+const productIdInputSchema = z.object({
   productId: z.number().int().positive('Valid product ID is required'),
 });
 
@@ -46,7 +46,7 @@ const alternateNumberSchema = z.object({
   kind: z.enum(['oem', 'alternate']),
 });
 
-export const createProductSchema = z.object({
+const createProductSchema = z.object({
   sku: z.string().trim().min(1, 'SKU is required'),
   name: z.string().trim().min(1, 'Product name is required'),
   partNumber: z.string().trim().min(1, 'Part number is required'),
@@ -64,7 +64,7 @@ export const createProductSchema = z.object({
   fitments: z.array(fitmentSchema).default([]),
 });
 
-export const updateProductSchema = z.object({
+const updateProductSchema = z.object({
   sku: z.string().trim().min(1, 'SKU is required'),
   name: z.string().trim().min(1, 'Product name is required'),
   partNumber: z.string().trim().min(1, 'Part number is required'),
@@ -153,7 +153,7 @@ export async function executeCreateProduct(
           reorderLevel: data.reorderLevel,
           isActive: data.isActive,
         })
-        .returning({ id: products.id });
+        .$returningId();
 
       // 2. Insert internal barcode ('20' + id padded to 8 digits)
       const internalBarcode = '20' + String(inserted.id).padStart(8, '0');
@@ -227,8 +227,8 @@ export async function executeCreateProduct(
     }
     return { success: true, data: { id: newId }, message: 'Product created successfully' };
   } catch (err: unknown) {
-    const dbErr = err as { code?: string; detail?: string; constraint?: string; message?: string };
-    if (dbErr.code === '23505') {
+    const dbErr = err as { message?: string };
+    if (getDbErrorKind(err) === 'unique') {
       const [existing] = await db
         .select({ name: products.name })
         .from(products)
@@ -239,10 +239,10 @@ export async function executeCreateProduct(
         : 'A unique constraint was violated (duplicate SKU or part number)';
       return { success: false, error: msg, fieldErrors: { sku: msg } };
     }
-    if (dbErr.code === '23514') {
+    if (getDbErrorKind(err) === 'check') {
       return { success: false, error: 'Database check constraint failed: please check your numbers (prices/stock cannot be negative).' };
     }
-    if (dbErr.code === '23503') {
+    if (getDbErrorKind(err) === 'foreign_key') {
       return { success: false, error: 'Invalid reference: selected category, brand, or model does not exist.' };
     }
     return { success: false, error: dbErr.message || 'Failed to create product' };
@@ -354,8 +354,8 @@ export async function updateProduct(
     revalidatePath('/inventory');
     return { success: true, data: { id }, message: 'Product updated successfully' };
   } catch (err: unknown) {
-    const dbErr = err as { code?: string; detail?: string; constraint?: string; message?: string };
-    if (dbErr.code === '23505') {
+    const dbErr = err as { message?: string };
+    if (getDbErrorKind(err) === 'unique') {
       const [existing] = await db
         .select({ name: products.name })
         .from(products)
@@ -366,7 +366,7 @@ export async function updateProduct(
         : 'A unique constraint was violated';
       return { success: false, error: msg, fieldErrors: { sku: msg } };
     }
-    if (dbErr.code === '23514') {
+    if (getDbErrorKind(err) === 'check') {
       return { success: false, error: 'Database check constraint failed: values must be valid.' };
     }
     return { success: false, error: dbErr.message || 'Failed to update product' };
@@ -489,16 +489,13 @@ export async function createCategory(name: string): Promise<ServerActionResult<{
   const cleanName = parsed.data.name;
 
   try {
-    const [inserted] = await db
-      .insert(categories)
-      .values({ name: cleanName })
-      .returning({ id: categories.id, name: categories.name });
+    const [{ id }] = await db.insert(categories).values({ name: cleanName }).$returningId();
+    const inserted = { id, name: cleanName };
 
     revalidatePath('/products');
     return { success: true, data: inserted, message: 'Category added' };
   } catch (err: unknown) {
-    const dbErr = err as { code?: string };
-    if (dbErr.code === '23505') {
+    if (getDbErrorKind(err) === 'unique') {
       return { success: false, error: `Category "${cleanName}" already exists` };
     }
     return { success: false, error: mapDatabaseError(err, 'Failed to create category.') };
@@ -517,16 +514,13 @@ export async function createBrand(name: string): Promise<ServerActionResult<{ id
   const cleanName = parsed.data.name;
 
   try {
-    const [inserted] = await db
-      .insert(brands)
-      .values({ name: cleanName })
-      .returning({ id: brands.id, name: brands.name });
+    const [{ id }] = await db.insert(brands).values({ name: cleanName }).$returningId();
+    const inserted = { id, name: cleanName };
 
     revalidatePath('/products');
     return { success: true, data: inserted, message: 'Brand added' };
   } catch (err: unknown) {
-    const dbErr = err as { code?: string };
-    if (dbErr.code === '23505') {
+    if (getDbErrorKind(err) === 'unique') {
       return { success: false, error: `Brand "${cleanName}" already exists` };
     }
     return { success: false, error: mapDatabaseError(err, 'Failed to create brand.') };
@@ -545,16 +539,13 @@ export async function createVehicleMake(name: string): Promise<ServerActionResul
   const cleanName = parsed.data.name;
 
   try {
-    const [inserted] = await db
-      .insert(vehicleMakes)
-      .values({ name: cleanName })
-      .returning({ id: vehicleMakes.id, name: vehicleMakes.name });
+    const [{ id }] = await db.insert(vehicleMakes).values({ name: cleanName }).$returningId();
+    const inserted = { id, name: cleanName };
 
     revalidatePath('/products');
     return { success: true, data: inserted, message: 'Vehicle make added' };
   } catch (err: unknown) {
-    const dbErr = err as { code?: string };
-    if (dbErr.code === '23505') {
+    if (getDbErrorKind(err) === 'unique') {
       return { success: false, error: `Vehicle make "${cleanName}" already exists` };
     }
     return { success: false, error: mapDatabaseError(err, 'Failed to create vehicle make.') };
@@ -576,23 +567,23 @@ export async function createVehicleModel(
   const { makeId: cleanMakeId, name: cleanName } = parsed.data;
 
   try {
-    const [inserted] = await db
+    const [{ id }] = await db
       .insert(vehicleModels)
       .values({ makeId: cleanMakeId, name: cleanName })
-      .returning({ id: vehicleModels.id, name: vehicleModels.name });
+      .$returningId();
+    const inserted = { id, name: cleanName };
 
     revalidatePath('/products');
     return { success: true, data: inserted, message: 'Vehicle model added' };
   } catch (err: unknown) {
-    const dbErr = err as { code?: string };
-    if (dbErr.code === '23505') {
+    if (getDbErrorKind(err) === 'unique') {
       return { success: false, error: `Model "${cleanName}" already exists for this make` };
     }
     return { success: false, error: mapDatabaseError(err, 'Failed to create vehicle model.') };
   }
 }
 
-export const addManufacturerBarcodeSchema = z.object({
+const addManufacturerBarcodeSchema = z.object({
   productId: z.number().int().positive('Valid product ID is required'),
   code: z
     .string()
@@ -601,7 +592,7 @@ export const addManufacturerBarcodeSchema = z.object({
     .max(100, 'Barcode cannot exceed 100 characters'),
 });
 
-export const removeBarcodeSchema = z.object({
+const removeBarcodeSchema = z.object({
   barcodeId: z.number().int().positive('Valid barcode ID is required'),
 });
 
@@ -638,14 +629,15 @@ export async function executeAddManufacturerBarcode(
   }
 
   try {
-    const [inserted] = await db
+    const [{ id }] = await db
       .insert(productBarcodes)
       .values({
         productId,
         code,
         kind: 'manufacturer',
       })
-      .returning({ id: productBarcodes.id, code: productBarcodes.code });
+      .$returningId();
+    const inserted = { id, code };
 
     try {
       revalidatePath('/products');
@@ -658,9 +650,7 @@ export async function executeAddManufacturerBarcode(
       message: 'Manufacturer barcode added',
     };
   } catch (err: unknown) {
-    const errorObj = err as { code?: string; cause?: { code?: string } };
-    const errorCode = errorObj?.code || errorObj?.cause?.code;
-    if (errorCode === '23505') {
+    if (getDbErrorKind(err) === 'unique') {
       const [existing] = await db
         .select({ name: products.name })
         .from(productBarcodes)

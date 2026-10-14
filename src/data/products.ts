@@ -92,10 +92,10 @@ export async function getPaginatedProducts(
     const rawSearch = params.search.trim();
     const pattern = `%${rawSearch.toLowerCase()}%`;
     conditions.push(
-      sql`(${products.name} ILIKE ${pattern} OR ${products.sku} ILIKE ${pattern} OR ${products.partNumber} ILIKE ${pattern} OR EXISTS (
+      sql`(${products.name} LIKE ${pattern} OR ${products.sku} LIKE ${pattern} OR ${products.partNumber} LIKE ${pattern} OR EXISTS (
         SELECT 1 FROM ${productPartNumbers}
         WHERE ${productPartNumbers.productId} = ${products.id}
-        AND ${productPartNumbers.partNumber} ILIKE ${pattern}
+        AND ${productPartNumbers.partNumber} LIKE ${pattern}
       ) OR EXISTS (
         SELECT 1 FROM ${productBarcodes}
         WHERE ${productBarcodes.productId} = ${products.id}

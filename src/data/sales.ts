@@ -134,7 +134,7 @@ function buildSalesWhereConditions(
   if (params.search && params.search.trim().length > 0) {
     const term = `%${params.search.trim().toLowerCase()}%`;
     conditions.push(
-      sql`(${sales.receiptNumber} ILIKE ${term} OR ${sales.customerName} ILIKE ${term} OR ${sales.customerPhone} ILIKE ${term} OR ${sales.vehicleNo} ILIKE ${term})`,
+      sql`(${sales.receiptNumber} LIKE ${term} OR ${sales.customerName} LIKE ${term} OR ${sales.customerPhone} LIKE ${term} OR ${sales.vehicleNo} LIKE ${term})`,
     );
   }
 

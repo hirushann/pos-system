@@ -30,36 +30,41 @@ export interface TestSeedData {
 
 export async function resetTestDatabase(): Promise<TestSeedData> {
   // Triple-check that we are never touching pos_dev
-  const dbNameRes = await db.execute<{ current_database: string }>(
-    sql`SELECT current_database();`,
-  );
-  const currentDb = dbNameRes.rows[0]?.current_database;
+  const [dbNameRows] = (await db.execute(
+    sql`SELECT DATABASE() AS current_database`,
+  )) as unknown as [{ current_database: string }[], unknown];
+  const currentDb = dbNameRows[0]?.current_database;
   if (currentDb !== 'pos_test') {
     throw new Error(
       `ABORTING: Expected current database to be 'pos_test', but found '${currentDb}'! Never touch pos_dev.`,
     );
   }
 
-  // Truncate tables and restart identity sequences
-  await db.execute(sql`
-    TRUNCATE TABLE
-      sales,
-      sale_items,
-      stock_movements,
-      receipt_counters,
-      product_barcodes,
-      product_fitments,
-      product_part_numbers,
-      products,
-      vehicle_models,
-      vehicle_makes,
-      brands,
-      categories,
-      "session",
-      "account",
-      "user"
-    RESTART IDENTITY CASCADE;
-  `);
+  // Empty every table and restart AUTO_INCREMENT counters. TRUNCATE is refused
+  // for tables referenced by foreign keys, so switch the checks off around it.
+  await db.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
+  for (const table of [
+    'sale_items',
+    'stock_movements',
+    'sales',
+    'receipt_counters',
+    'product_barcodes',
+    'product_fitments',
+    'product_part_numbers',
+    'products',
+    'vehicle_models',
+    'vehicle_makes',
+    'brands',
+    'categories',
+    'settings',
+    'session',
+    'account',
+    'verification',
+    'user',
+  ]) {
+    await db.execute(sql.raw(`TRUNCATE TABLE \`${table}\``));
+  }
+  await db.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
 
   // Insert test users
   await db.insert(user).values([
@@ -94,8 +99,7 @@ export async function resetTestDatabase(): Promise<TestSeedData> {
       receiptFooter: 'Thank you!',
       cashierMaxDiscountPct: '5.00',
     })
-    .onConflictDoUpdate({
-      target: settings.id,
+    .onDuplicateKeyUpdate({
       set: {
         shopName: 'Test Auto Spares',
         cashierMaxDiscountPct: '5.00',
@@ -108,7 +112,7 @@ export async function resetTestDatabase(): Promise<TestSeedData> {
     .values({
       name: 'Brakes',
     })
-    .returning();
+    .$returningId();
 
   const categoryId = cat.id;
 
@@ -156,7 +160,7 @@ export async function resetTestDatabase(): Promise<TestSeedData> {
         isActive: true,
       },
     ])
-    .returning();
+    .$returningId();
 
   // Insert internal barcodes for test products
   await db.insert(productBarcodes).values(

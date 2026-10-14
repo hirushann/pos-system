@@ -4,11 +4,11 @@ import { db } from '@/src/db';
 import { settings } from '@/src/db/schema';
 import { requireOwner } from '@/src/lib/auth-guards';
 import { mapDatabaseError } from '@/src/lib/db-errors';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
-export const updateSettingsSchema = z.object({
+const updateSettingsSchema = z.object({
   shopName: z
     .string()
     .trim()
@@ -71,7 +71,7 @@ export async function getSettingsData(): Promise<SettingsData> {
 
   if (!row) {
     // Ensure default settings row exists
-    const [inserted] = await db
+    await db
       .insert(settings)
       .values({
         id: 1,
@@ -81,17 +81,21 @@ export async function getSettingsData(): Promise<SettingsData> {
         receiptFooter: 'Thank you! Parts can be exchanged within 7 days with this bill.',
         cashierMaxDiscountPct: '5.00',
       })
-      .onConflictDoNothing()
-      .returning();
+      .onDuplicateKeyUpdate({ set: { id: sql`${settings.id}` } }); // no-op if another request inserted first
 
-    if (inserted) {
-      return {
-        shopName: inserted.shopName,
-        address: inserted.address,
-        phone: inserted.phone,
-        receiptFooter: inserted.receiptFooter,
-        cashierMaxDiscountPct: inserted.cashierMaxDiscountPct,
-      };
+    const [created] = await db
+      .select({
+        shopName: settings.shopName,
+        address: settings.address,
+        phone: settings.phone,
+        receiptFooter: settings.receiptFooter,
+        cashierMaxDiscountPct: settings.cashierMaxDiscountPct,
+      })
+      .from(settings)
+      .where(eq(settings.id, 1));
+
+    if (created) {
+      return created;
     }
   }
 
@@ -132,7 +136,7 @@ export async function updateSettings(rawInput: UpdateSettingsInput): Promise<{
   const data = parsed.data;
 
   try {
-    const [updated] = await db
+    await db
       .insert(settings)
       .values({
         id: 1,
@@ -142,8 +146,7 @@ export async function updateSettings(rawInput: UpdateSettingsInput): Promise<{
         receiptFooter: data.receiptFooter || null,
         cashierMaxDiscountPct: parseFloat(data.cashierMaxDiscountPct).toFixed(2),
       })
-      .onConflictDoUpdate({
-        target: settings.id,
+      .onDuplicateKeyUpdate({
         set: {
           shopName: data.shopName,
           address: data.address || null,
@@ -152,13 +155,17 @@ export async function updateSettings(rawInput: UpdateSettingsInput): Promise<{
           cashierMaxDiscountPct: parseFloat(data.cashierMaxDiscountPct).toFixed(2),
         },
       })
-      .returning({
+
+    const [updated] = await db
+      .select({
         shopName: settings.shopName,
         address: settings.address,
         phone: settings.phone,
         receiptFooter: settings.receiptFooter,
         cashierMaxDiscountPct: settings.cashierMaxDiscountPct,
-      });
+      })
+      .from(settings)
+      .where(eq(settings.id, 1));
 
     revalidatePath('/settings');
     revalidatePath('/checkout');

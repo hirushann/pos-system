@@ -9,6 +9,7 @@ import {
   saleItems,
   stockMovements,
   settings,
+  receiptCounters,
   user,
 } from '@/src/db/schema';
 import { requireUser, assertOwner } from '@/src/lib/auth-guards';
@@ -19,13 +20,13 @@ import { revalidatePath } from 'next/cache';
 import Decimal from 'decimal.js';
 import { z } from 'zod';
 
-import { mapDatabaseError } from '@/src/lib/db-errors';
+import { getDbErrorKind, mapDatabaseError } from '@/src/lib/db-errors';
 
 // ============================================================================
 // Schemas
 // ============================================================================
 
-export const searchPartsInputSchema = z.object({
+const searchPartsInputSchema = z.object({
   query: z.string().trim().optional(),
   makeId: z.number().int().positive().optional(),
   modelId: z.number().int().positive().optional(),
@@ -34,12 +35,12 @@ export const searchPartsInputSchema = z.object({
 
 export type SearchPartsInput = z.infer<typeof searchPartsInputSchema>;
 
-export const saleItemInputSchema = z.object({
+const saleItemInputSchema = z.object({
   productId: z.number().int().positive('Invalid product selected'),
   quantity: z.number().int().min(1, 'Quantity must be at least 1'),
 });
 
-export const completeSaleInputSchema = z.object({
+const completeSaleInputSchema = z.object({
   items: z.array(saleItemInputSchema).min(1, 'Cart cannot be empty'),
   paymentMethod: z.enum(['cash', 'card']),
   amountTendered: z.string().trim().optional().nullable(),
@@ -261,15 +262,21 @@ export async function executeCompleteSale(
       const colomboDateStr = getColomboDateString(new Date());
       const currentYear = parseInt(colomboDateStr.split('-')[0], 10);
 
-      const counterResult = await tx.execute(sql`
-        INSERT INTO receipt_counters (year, last_number)
-        VALUES (${currentYear}, 1)
-        ON CONFLICT (year)
-        DO UPDATE SET last_number = receipt_counters.last_number + 1
-        RETURNING last_number
-      `);
+      // Atomic upsert: the row lock taken here is held until commit, so the
+      // read-back below always sees this transaction's number (gap-free).
+      await tx
+        .insert(receiptCounters)
+        .values({ year: currentYear, lastNumber: 1 })
+        .onDuplicateKeyUpdate({
+          set: { lastNumber: sql`${receiptCounters.lastNumber} + 1` },
+        });
 
-      const lastNumber = Number((counterResult.rows[0] as { last_number: number }).last_number);
+      const [counterRow] = await tx
+        .select({ lastNumber: receiptCounters.lastNumber })
+        .from(receiptCounters)
+        .where(eq(receiptCounters.year, currentYear));
+
+      const lastNumber = Number(counterRow.lastNumber);
       const receiptNumber = `INV-${currentYear}-${String(lastNumber).padStart(6, '0')}`;
 
       // 7. Insert the sale record
@@ -288,7 +295,7 @@ export async function executeCompleteSale(
           customerPhone: input.customerPhone || null,
           vehicleNo: input.vehicleNo || null,
         })
-        .returning();
+        .$returningId();
 
       // 8. Insert sale items
       for (const line of computedLineItems) {
@@ -327,7 +334,7 @@ export async function executeCompleteSale(
 
       return {
         saleId: insertedSale.id,
-        receiptNumber: insertedSale.receiptNumber,
+        receiptNumber,
         total: totalDec.toFixed(2),
         subtotal: subtotalDec.toFixed(2),
         discount: discountDec.toFixed(2),
@@ -483,7 +490,7 @@ export async function executeGetSaleReceiptData(saleId: number): Promise<Receipt
 // Void Sale Server Action (Owner Only)
 // ============================================================================
 
-export const voidSaleInputSchema = z.object({
+const voidSaleInputSchema = z.object({
   saleId: z.number().int().positive('Please specify a valid sale ID'),
   reason: z
     .string()
@@ -626,9 +633,9 @@ export async function executeVoidSale(
       data: result,
     };
   } catch (err: unknown) {
-    const error = err as { code?: string; message?: string };
+    const error = err as { message?: string };
     let msg = error.message || 'Failed to void sale.';
-    if (error.code === '23514') {
+    if (getDbErrorKind(err) === 'check') {
       msg = 'Database constraint error: voided_at is required when voiding.';
     }
     return {
@@ -638,7 +645,7 @@ export async function executeVoidSale(
   }
 }
 
-export const lookupBarcodeInputSchema = z.object({
+const lookupBarcodeInputSchema = z.object({
   code: z.string().trim().min(1, 'Barcode code cannot be empty'),
 });
 

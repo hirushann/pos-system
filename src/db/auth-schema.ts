@@ -1,83 +1,84 @@
 import { sql } from 'drizzle-orm';
-import { pgTable, text, timestamp, boolean, index, check } from 'drizzle-orm/pg-core';
+import { mysqlTable, text, varchar, boolean, index, check } from 'drizzle-orm/mysql-core';
+import { ts, nowSql } from './columns';
 
-export const user = pgTable(
+export const user = mysqlTable(
   'user',
   {
-    id: text('id').primaryKey(),
-    name: text('name').notNull(),
-    email: text('email').notNull().unique(),
+    id: varchar('id', { length: 255 }).primaryKey(),
+    name: varchar('name', { length: 255 }).notNull(),
+    email: varchar('email', { length: 255 }).notNull().unique(),
     emailVerified: boolean('email_verified').default(false).notNull(),
     image: text('image'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .defaultNow()
+    createdAt: ts('created_at').default(nowSql).notNull(),
+    updatedAt: ts('updated_at')
+      .default(nowSql)
       .$onUpdate(() => new Date())
       .notNull(),
-    role: text('role'),
+    role: varchar('role', { length: 255 }),
     banned: boolean('banned').default(false),
     banReason: text('ban_reason'),
-    banExpires: timestamp('ban_expires', { withTimezone: true }),
+    banExpires: ts('ban_expires'),
   },
   (table) => [
     check('user_role_check', sql`${table.role} IN ('owner', 'cashier')`),
   ],
 );
 
-export const session = pgTable(
+export const session = mysqlTable(
   'session',
   {
-    id: text('id').primaryKey(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    token: text('token').notNull().unique(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    id: varchar('id', { length: 255 }).primaryKey(),
+    expiresAt: ts('expires_at').notNull(),
+    token: varchar('token', { length: 255 }).notNull().unique(),
+    createdAt: ts('created_at').default(nowSql).notNull(),
+    updatedAt: ts('updated_at')
       .$onUpdate(() => new Date())
       .notNull(),
-    ipAddress: text('ip_address'),
+    ipAddress: varchar('ip_address', { length: 255 }),
     userAgent: text('user_agent'),
-    userId: text('user_id')
+    userId: varchar('user_id', { length: 255 })
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
-    impersonatedBy: text('impersonated_by'),
+    impersonatedBy: varchar('impersonated_by', { length: 255 }),
   },
   (table) => [index('session_userId_idx').on(table.userId)],
 );
 
-export const account = pgTable(
+export const account = mysqlTable(
   'account',
   {
-    id: text('id').primaryKey(),
-    accountId: text('account_id').notNull(),
-    providerId: text('provider_id').notNull(),
-    userId: text('user_id')
+    id: varchar('id', { length: 255 }).primaryKey(),
+    accountId: varchar('account_id', { length: 255 }).notNull(),
+    providerId: varchar('provider_id', { length: 255 }).notNull(),
+    userId: varchar('user_id', { length: 255 })
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     accessToken: text('access_token'),
     refreshToken: text('refresh_token'),
     idToken: text('id_token'),
-    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
-    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+    accessTokenExpiresAt: ts('access_token_expires_at'),
+    refreshTokenExpiresAt: ts('refresh_token_expires_at'),
     scope: text('scope'),
     password: text('password'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: ts('created_at').default(nowSql).notNull(),
+    updatedAt: ts('updated_at')
       .$onUpdate(() => new Date())
       .notNull(),
   },
   (table) => [index('account_userId_idx').on(table.userId)],
 );
 
-export const verification = pgTable(
+export const verification = mysqlTable(
   'verification',
   {
-    id: text('id').primaryKey(),
-    identifier: text('identifier').notNull(),
+    id: varchar('id', { length: 255 }).primaryKey(),
+    identifier: varchar('identifier', { length: 255 }).notNull(),
     value: text('value').notNull(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
-      .defaultNow()
+    expiresAt: ts('expires_at').notNull(),
+    createdAt: ts('created_at').default(nowSql).notNull(),
+    updatedAt: ts('updated_at')
+      .default(nowSql)
       .$onUpdate(() => new Date())
       .notNull(),
   },

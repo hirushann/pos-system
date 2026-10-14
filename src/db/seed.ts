@@ -1,5 +1,5 @@
 import { count, eq } from 'drizzle-orm';
-import { db, pool } from './index';
+import { db, closeDb } from './index';
 import {
   categories,
   brands,
@@ -39,7 +39,7 @@ async function seed() {
   const prodCount = Number(existingProducts[0]?.count ?? 0);
   if (prodCount > 0) {
     console.log(`Database already has ${prodCount} products. Skipping seed.`);
-    await pool.end();
+    await closeDb();
     return;
   }
 
@@ -49,7 +49,7 @@ async function seed() {
     console.error('\nError: No store owner found in the database.');
     console.error('Please create an owner account first using:');
     console.error('  npm run create-owner -- --email <email> --name <name>\n');
-    await pool.end();
+    await closeDb();
     process.exit(1);
   }
   const owner = owners[0];
@@ -63,6 +63,7 @@ async function seed() {
     // -------------------------------------------------------------------------
     await tx
       .insert(settings)
+      .ignore()
       .values({
         id: 1,
         shopName: 'Colombo Auto Spares & Parts',
@@ -70,8 +71,7 @@ async function seed() {
         phone: '+94 11 234 5678',
         receiptFooter: 'Thank you! Parts can be exchanged within 7 days with this bill.',
         cashierMaxDiscountPct: '5.00',
-      })
-      .onConflictDoNothing();
+      });
 
     // -------------------------------------------------------------------------
     // Receipt Counter for current year
@@ -79,11 +79,11 @@ async function seed() {
     const currentYear = new Date().getFullYear();
     await tx
       .insert(receiptCounters)
+      .ignore()
       .values({
         year: currentYear,
         lastNumber: 0,
-      })
-      .onConflictDoNothing();
+      });
 
     // -------------------------------------------------------------------------
     // Categories (~10)
@@ -100,10 +100,8 @@ async function seed() {
       { name: 'Transmission' },
       { name: 'Oils & Fluids' },
     ];
-    const insertedCategories = await tx
-      .insert(categories)
-      .values(categoryData)
-      .returning();
+    await tx.insert(categories).values(categoryData);
+    const insertedCategories = await tx.select().from(categories);
     const catMap = new Map(insertedCategories.map((c) => [c.name, c.id]));
 
     // -------------------------------------------------------------------------
@@ -121,10 +119,8 @@ async function seed() {
       { name: 'Valeo' },
       { name: 'Osram' },
     ];
-    const insertedBrands = await tx
-      .insert(brands)
-      .values(brandData)
-      .returning();
+    await tx.insert(brands).values(brandData);
+    const insertedBrands = await tx.select().from(brands);
     const brandMap = new Map(insertedBrands.map((b) => [b.name, b.id]));
 
     // -------------------------------------------------------------------------
@@ -166,7 +162,7 @@ async function seed() {
       const [insertedMake] = await tx
         .insert(vehicleMakes)
         .values({ name: item.make })
-        .returning();
+        .$returningId();
 
       for (const mName of item.models) {
         const [insertedModel] = await tx
@@ -175,7 +171,7 @@ async function seed() {
             makeId: insertedMake.id,
             name: mName,
           })
-          .returning();
+          .$returningId();
         modelMap.set(`${item.make} ${mName}`, insertedModel.id);
       }
     }
@@ -1032,7 +1028,7 @@ async function seed() {
           reorderLevel: part.reorderLevel,
           isActive: true,
         })
-        .returning();
+        .$returningId();
 
       // Alternate / OEM numbers
       if (part.alternates.length > 0) {
@@ -1074,13 +1070,13 @@ async function seed() {
     console.log('✓ All catalog data, fitments, alternates, and opening stock inserted successfully.');
   });
 
-  await pool.end();
+  await closeDb();
   console.log('Seeding completed successfully!');
 }
 
 seed().catch(async (err) => {
   console.error('Seeding failed with error:');
   console.error(err);
-  await pool.end();
+  await closeDb();
   process.exit(1);
 });

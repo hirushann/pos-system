@@ -8,7 +8,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { mapDatabaseError } from '@/src/lib/db-errors';
 
-export const adjustStockSchema = z.object({
+const adjustStockSchema = z.object({
   productId: z.number().int().positive('Please select a valid product'),
   changeQty: z
     .number()

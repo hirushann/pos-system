@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { eq } from 'drizzle-orm';
 import { auth } from '../lib/auth';
-import { db, pool } from '../db';
+import { db, closeDb } from '../db';
 import { user, account } from '../db/auth-schema';
 
 function parseArgs(args: string[]): { email?: string; name?: string } {
@@ -112,7 +112,7 @@ async function main() {
     console.error('Failed to create owner account:', error);
     process.exit(1);
   } finally {
-    await pool.end();
+    await closeDb();
   }
 }
 

@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
 import { auth } from '@/src/lib/auth';
 import { requireOwner } from '@/src/lib/auth-guards';
-import { mapDatabaseError } from '@/src/lib/db-errors';
+import { getDbErrorKind, mapDatabaseError } from '@/src/lib/db-errors';
 
 const createCashierSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters'),
@@ -59,7 +59,7 @@ export async function createCashierAction(formData: {
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    if (message.toLowerCase().includes('already exists') || message.includes('23505')) {
+    if (message.toLowerCase().includes('already exists') || message.includes('ER_DUP_ENTRY') || getDbErrorKind(err) === 'unique') {
       return {
         success: false,
         error: 'A staff member with this email already exists.',

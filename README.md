@@ -4,7 +4,7 @@ A high-performance Point of Sale and Inventory Management system tailored for a 
 
 - **Currency:** Sri Lankan Rupees (`Rs. 1,250.00` / LKR)
 - **Time Zone:** `Asia/Colombo` (UTC+05:30)
-- **Architecture:** Next.js App Router (TypeScript strict mode), PostgreSQL, Drizzle ORM, Better Auth, Tailwind CSS, shadcn/ui.
+- **Architecture:** Next.js App Router (TypeScript strict mode), MySQL, Drizzle ORM, Better Auth, Tailwind CSS, shadcn/ui.
 
 ---
 
@@ -27,14 +27,14 @@ Before setting up the application on a new Mac, ensure the following are install
 
 - **macOS:** macOS Sonoma (14+) or macOS Sequoia (15+)
 - **Node.js:** v20.x, v22.x, or v26.x (recommended via [nvm](https://github.com/nvm-sh/nvm) or Homebrew)
-- **PostgreSQL:** Version 15 or 16
+- **MySQL:** Version 8.0 or newer (MariaDB 10.5+ also works)
 - **Homebrew:** (Package manager for macOS)
 
-To install Node.js and PostgreSQL via Homebrew:
+To install Node.js and MySQL via Homebrew:
 ```bash
-# Install PostgreSQL
-brew install postgresql@16
-brew services start postgresql@16
+# Install MySQL
+brew install mysql
+brew services start mysql
 
 # Install Node.js
 brew install node
@@ -55,11 +55,10 @@ cd pos-system
 npm install
 ```
 
-### 3. Create PostgreSQL Databases
-Create the development and test databases:
+### 3. Create MySQL Databases
+Create the development and test databases (utf8mb4 so all characters are stored correctly):
 ```bash
-createdb pos_dev
-createdb pos_test
+mysql -u root -p -e "CREATE DATABASE pos_dev CHARACTER SET utf8mb4; CREATE DATABASE pos_test CHARACTER SET utf8mb4;"
 ```
 
 ### 4. Configure Environment Variables
@@ -82,11 +81,11 @@ Populate `.env.local` (see [Environment Variables](#environment-variables-envloc
 The application loads environment variables from `.env.local` (which is never committed to Git):
 
 ```ini
-# Primary development PostgreSQL database
-DATABASE_URL=postgresql://localhost:5432/pos_dev
+# Primary development MySQL database (format: mysql://user:password@host:3306/database)
+DATABASE_URL=mysql://root:your_password@localhost:3306/pos_dev
 
 # Dedicated test database (never touches pos_dev)
-DATABASE_URL_TEST=postgresql://localhost:5432/pos_test
+DATABASE_URL_TEST=mysql://root:your_password@localhost:3306/pos_test
 
 # Secret used to encrypt sessions and cookies (generate with openssl rand -hex 32)
 BETTER_AUTH_SECRET=your_generated_32_byte_hex_secret
@@ -140,7 +139,7 @@ npm run create-owner
 | `npm run db:generate` | `drizzle-kit generate` | Generates a new migration from schema changes (`-- --name=<name>`). |
 | `npm run db:studio` | `drizzle-kit studio` | Launches Drizzle Studio in browser for inspecting data. |
 | `npm run db:seed` | `tsx --env-file=.env.local src/db/seed.ts` | Seeds categories, vehicle models, parts, and stock. |
-| `npm run db:backup` | `bash scripts/backup.sh` | Takes an automated `pg_dump -Fc` backup in `backups/`, keeping the last 30. |
+| `npm run db:backup` | `bash scripts/backup.sh` | Takes an automated `mysqldump` backup (gzipped) in `backups/`, keeping the last 30. |
 | `npm run create-owner`| `tsx --env-file=.env.local src/scripts/create-owner.ts` | Creates initial store owner account. |
 
 ---
@@ -166,7 +165,7 @@ npm test
 ## Database Backup & Restore
 
 ### Taking a Backup
-The backup script performs a custom-format dump (`pg_dump -Fc`) of PostgreSQL into the `backups/` directory and automatically retains only the most recent 30 backup files:
+The backup script runs `mysqldump --single-transaction` (a consistent snapshot, no table locks) into the `backups/` directory, gzips it, and automatically retains only the most recent 30 backup files. It needs the `mysqldump` client on the machine:
 
 ```bash
 npm run db:backup
@@ -174,18 +173,18 @@ npm run db:backup
 bash scripts/backup.sh
 ```
 
-Backups are saved as `backups/pos_backup_YYYYMMDD_HHMMSS.dump` (ignored by `.gitignore`).
+Backups are saved as `backups/pos_backup_YYYYMMDD_HHMMSS.sql.gz` (ignored by `.gitignore`).
 
 ### Restoring from a Backup
-To restore a backup into `pos_dev` using `pg_restore`:
+To restore a backup into `pos_dev`:
 
 ```bash
-# Restore into existing pos_dev database (cleans existing tables before recreating):
-pg_restore -d pos_dev --clean --if-exists backups/pos_backup_<timestamp>.dump
+# Restore into an existing (empty or disposable) pos_dev database:
+gunzip -c backups/pos_backup_<timestamp>.sql.gz | mysql -u root -p pos_dev
 
 # Or restore into a fresh database:
-createdb pos_dev_restored
-pg_restore -d pos_dev_restored backups/pos_backup_<timestamp>.dump
+mysql -u root -p -e "CREATE DATABASE pos_dev_restored CHARACTER SET utf8mb4"
+gunzip -c backups/pos_backup_<timestamp>.sql.gz | mysql -u root -p pos_dev_restored
 ```
 
 ---

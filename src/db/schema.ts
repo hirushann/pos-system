@@ -1,55 +1,56 @@
 import { sql, defineRelations } from 'drizzle-orm';
 import {
-  pgTable,
+  mysqlTable,
   bigint,
   text,
-  numeric,
-  integer,
-  timestamp,
+  varchar,
+  decimal,
+  int,
   boolean,
   check,
   index,
   unique,
   uniqueIndex,
-} from 'drizzle-orm/pg-core';
+} from 'drizzle-orm/mysql-core';
+import { ts, nowSql } from './columns';
 import { user } from './auth-schema';
 
 // ---------------------------------------------------------------------------
 // Categories
 // ---------------------------------------------------------------------------
-export const categories = pgTable('categories', {
-  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-  name: text('name').notNull().unique(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+export const categories = mysqlTable('categories', {
+  id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+  name: varchar('name', { length: 255 }).notNull().unique(),
+  createdAt: ts('created_at').notNull().default(nowSql),
 });
 
 // ---------------------------------------------------------------------------
 // Brands (Part manufacturers, e.g. Toyota Genuine, Denso, NGK, Bosch)
 // ---------------------------------------------------------------------------
-export const brands = pgTable('brands', {
-  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-  name: text('name').notNull().unique(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+export const brands = mysqlTable('brands', {
+  id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+  name: varchar('name', { length: 255 }).notNull().unique(),
+  createdAt: ts('created_at').notNull().default(nowSql),
 });
 
 // ---------------------------------------------------------------------------
 // Vehicle Makes & Models
 // ---------------------------------------------------------------------------
-export const vehicleMakes = pgTable('vehicle_makes', {
-  id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-  name: text('name').notNull().unique(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+export const vehicleMakes = mysqlTable('vehicle_makes', {
+  id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+  name: varchar('name', { length: 255 }).notNull().unique(),
+  createdAt: ts('created_at').notNull().default(nowSql),
 });
 
-export const vehicleModels = pgTable(
+export const vehicleModels = mysqlTable(
   'vehicle_models',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
     makeId: bigint('make_id', { mode: 'number' })
       .notNull()
       .references(() => vehicleMakes.id),
-    name: text('name').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    name: varchar('name', { length: 255 }).notNull(),
+    createdAt: ts('created_at').notNull().default(nowSql),
   },
   (t) => [
     unique('vehicle_models_make_id_name_unique').on(t.makeId, t.name),
@@ -60,29 +61,29 @@ export const vehicleModels = pgTable(
 // ---------------------------------------------------------------------------
 // Products (Catalog parts)
 // ---------------------------------------------------------------------------
-export const products = pgTable(
+export const products = mysqlTable(
   'products',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-    sku: text('sku').notNull().unique(),
-    name: text('name').notNull(),
-    partNumber: text('part_number').notNull(),
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    sku: varchar('sku', { length: 255 }).notNull().unique(),
+    name: varchar('name', { length: 255 }).notNull(),
+    partNumber: varchar('part_number', { length: 255 }).notNull(),
     categoryId: bigint('category_id', { mode: 'number' })
       .notNull()
       .references(() => categories.id),
     brandId: bigint('brand_id', { mode: 'number' }).references(() => brands.id),
     description: text('description'),
-    unit: text('unit').notNull().default('pcs'),
-    binLocation: text('bin_location'),
-    costPrice: numeric('cost_price', { precision: 12, scale: 2 }).notNull().default('0'),
-    price: numeric('price', { precision: 10, scale: 2 }).notNull(),
-    stockQty: integer('stock_qty').notNull().default(0),
-    reorderLevel: integer('reorder_level').notNull().default(0),
+    unit: varchar('unit', { length: 255 }).notNull().default('pcs'),
+    binLocation: varchar('bin_location', { length: 255 }),
+    costPrice: decimal('cost_price', { precision: 12, scale: 2 }).notNull().default('0'),
+    price: decimal('price', { precision: 10, scale: 2 }).notNull(),
+    stockQty: int('stock_qty').notNull().default(0),
+    reorderLevel: int('reorder_level').notNull().default(0),
     isActive: boolean('is_active').notNull().default(true),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: ts('created_at').notNull().default(nowSql),
+    updatedAt: ts('updated_at')
       .notNull()
-      .defaultNow()
+      .default(nowSql)
       .$onUpdate(() => new Date()),
   },
   (t) => [
@@ -90,8 +91,8 @@ export const products = pgTable(
     check('products_cost_price_check', sql`${t.costPrice} >= 0`),
     check('products_stock_qty_check', sql`${t.stockQty} >= 0`),
     check('products_reorder_level_check', sql`${t.reorderLevel} >= 0`),
-    index('products_part_number_idx').on(sql`lower(${t.partNumber})`),
-    index('products_name_idx').on(sql`lower(${t.name})`),
+    index('products_part_number_idx').on(t.partNumber),
+    index('products_name_idx').on(t.name),
     index('products_category_id_idx').on(t.categoryId),
     index('products_brand_id_idx').on(t.brandId),
   ],
@@ -100,18 +101,18 @@ export const products = pgTable(
 // ---------------------------------------------------------------------------
 // Product Fitments (Which vehicle models & years a part fits)
 // ---------------------------------------------------------------------------
-export const productFitments = pgTable(
+export const productFitments = mysqlTable(
   'product_fitments',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
     productId: bigint('product_id', { mode: 'number' })
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
     vehicleModelId: bigint('vehicle_model_id', { mode: 'number' })
       .notNull()
       .references(() => vehicleModels.id),
-    yearFrom: integer('year_from'),
-    yearTo: integer('year_to'),
+    yearFrom: int('year_from'),
+    yearTo: int('year_to'),
   },
   (t) => [
     check(
@@ -132,15 +133,15 @@ export const productFitments = pgTable(
 // ---------------------------------------------------------------------------
 // Product Part Numbers (Alternate / OEM cross-references)
 // ---------------------------------------------------------------------------
-export const productPartNumbers = pgTable(
+export const productPartNumbers = mysqlTable(
   'product_part_numbers',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
     productId: bigint('product_id', { mode: 'number' })
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
-    partNumber: text('part_number').notNull(),
-    kind: text('kind').notNull(),
+    partNumber: varchar('part_number', { length: 255 }).notNull(),
+    kind: varchar('kind', { length: 255 }).notNull(),
   },
   (t) => [
     check('product_part_numbers_kind_check', sql`${t.kind} IN ('oem', 'alternate')`),
@@ -149,58 +150,63 @@ export const productPartNumbers = pgTable(
       t.partNumber,
     ),
     index('product_part_numbers_product_id_idx').on(t.productId),
-    index('product_part_numbers_part_number_idx').on(sql`lower(${t.partNumber})`),
+    index('product_part_numbers_part_number_idx').on(t.partNumber),
   ],
 );
 
 // ---------------------------------------------------------------------------
 // Product Barcodes (Internal & Manufacturer Barcodes)
 // ---------------------------------------------------------------------------
-export const productBarcodes = pgTable(
+export const productBarcodes = mysqlTable(
   'product_barcodes',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
     productId: bigint('product_id', { mode: 'number' })
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
-    code: text('code').notNull().unique(),
-    kind: text('kind').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    code: varchar('code', { length: 255 }).notNull().unique(),
+    kind: varchar('kind', { length: 255 }).notNull(),
+    // MySQL has no partial indexes: this column is the product_id for internal
+    // barcodes and NULL otherwise, so a UNIQUE index on it allows at most one
+    // internal barcode per product (NULLs never collide).
+    internalProductId: bigint('internal_product_id', { mode: 'number' }).generatedAlwaysAs(
+      sql`IF(kind = 'internal', product_id, NULL)`,
+      { mode: 'virtual' },
+    ),
+    createdAt: ts('created_at').notNull().default(nowSql),
   },
   (t) => [
     check('product_barcodes_kind_check', sql`${t.kind} IN ('internal', 'manufacturer')`),
-    check('product_barcodes_code_check', sql`${t.kind} <> 'internal' OR ${t.code} ~ '^20[0-9]{8}$'`),
+    check('product_barcodes_code_check', sql`${t.kind} <> 'internal' OR ${t.code} REGEXP '^20[0-9]{8}$'`),
     index('product_barcodes_product_id_idx').on(t.productId),
-    uniqueIndex('product_barcodes_product_id_internal_idx')
-      .on(t.productId)
-      .where(sql`${t.kind} = 'internal'`),
+    uniqueIndex('product_barcodes_product_id_internal_idx').on(t.internalProductId),
   ],
 );
 
 // ---------------------------------------------------------------------------
 // Sales (Orders / Receipts)
 // ---------------------------------------------------------------------------
-export const sales = pgTable(
+export const sales = mysqlTable(
   'sales',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
-    receiptNumber: text('receipt_number').notNull().unique(),
-    cashierId: text('cashier_id')
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    receiptNumber: varchar('receipt_number', { length: 255 }).notNull().unique(),
+    cashierId: varchar('cashier_id', { length: 255 })
       .notNull()
       .references(() => user.id),
-    status: text('status').notNull().default('completed'),
-    voidedAt: timestamp('voided_at', { withTimezone: true }),
-    voidedBy: text('voided_by').references(() => user.id),
+    status: varchar('status', { length: 255 }).notNull().default('completed'),
+    voidedAt: ts('voided_at'),
+    voidedBy: varchar('voided_by', { length: 255 }).references(() => user.id),
     voidReason: text('void_reason'),
-    subtotal: numeric('subtotal', { precision: 12, scale: 2 }).notNull(),
-    discount: numeric('discount', { precision: 12, scale: 2 }).notNull().default('0'),
-    total: numeric('total', { precision: 12, scale: 2 }).notNull(),
-    amountTendered: numeric('amount_tendered', { precision: 12, scale: 2 }),
-    changeGiven: numeric('change_given', { precision: 12, scale: 2 }),
-    customerName: text('customer_name'),
-    customerPhone: text('customer_phone'),
-    vehicleNo: text('vehicle_no'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    subtotal: decimal('subtotal', { precision: 12, scale: 2 }).notNull(),
+    discount: decimal('discount', { precision: 12, scale: 2 }).notNull().default('0'),
+    total: decimal('total', { precision: 12, scale: 2 }).notNull(),
+    amountTendered: decimal('amount_tendered', { precision: 12, scale: 2 }),
+    changeGiven: decimal('change_given', { precision: 12, scale: 2 }),
+    customerName: varchar('customer_name', { length: 255 }),
+    customerPhone: varchar('customer_phone', { length: 255 }),
+    vehicleNo: varchar('vehicle_no', { length: 255 }),
+    createdAt: ts('created_at').notNull().default(nowSql),
   },
   (t) => [
     check('sales_status_check', sql`${t.status} IN ('completed', 'voided')`),
@@ -220,23 +226,23 @@ export const sales = pgTable(
 // ---------------------------------------------------------------------------
 // Sale Items (Line items for each sale)
 // ---------------------------------------------------------------------------
-export const saleItems = pgTable(
+export const saleItems = mysqlTable(
   'sale_items',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
     saleId: bigint('sale_id', { mode: 'number' })
       .notNull()
       .references(() => sales.id, { onDelete: 'cascade' }),
     productId: bigint('product_id', { mode: 'number' })
       .notNull()
       .references(() => products.id),
-    productName: text('product_name').notNull(),
-    partNumber: text('part_number').notNull(),
-    quantity: integer('quantity').notNull(),
-    unitPrice: numeric('unit_price', { precision: 12, scale: 2 }).notNull(),
-    unitCost: numeric('unit_cost', { precision: 12, scale: 2 }).notNull().default('0'),
-    lineTotal: numeric('line_total', { precision: 12, scale: 2 }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    productName: varchar('product_name', { length: 255 }).notNull(),
+    partNumber: varchar('part_number', { length: 255 }).notNull(),
+    quantity: int('quantity').notNull(),
+    unitPrice: decimal('unit_price', { precision: 12, scale: 2 }).notNull(),
+    unitCost: decimal('unit_cost', { precision: 12, scale: 2 }).notNull().default('0'),
+    lineTotal: decimal('line_total', { precision: 12, scale: 2 }).notNull(),
+    createdAt: ts('created_at').notNull().default(nowSql),
   },
   (t) => [
     check('sale_items_quantity_check', sql`${t.quantity} > 0`),
@@ -251,22 +257,22 @@ export const saleItems = pgTable(
 // ---------------------------------------------------------------------------
 // Stock Movements (Ledger of all stock changes)
 // ---------------------------------------------------------------------------
-export const stockMovements = pgTable(
+export const stockMovements = mysqlTable(
   'stock_movements',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
     productId: bigint('product_id', { mode: 'number' })
       .notNull()
       .references(() => products.id),
-    changeQty: integer('change_qty').notNull(),
-    qtyAfter: integer('qty_after').notNull(),
-    reason: text('reason').notNull(),
+    changeQty: int('change_qty').notNull(),
+    qtyAfter: int('qty_after').notNull(),
+    reason: varchar('reason', { length: 255 }).notNull(),
     saleId: bigint('sale_id', { mode: 'number' }).references(() => sales.id),
     note: text('note'),
-    createdBy: text('created_by')
+    createdBy: varchar('created_by', { length: 255 })
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: ts('created_at').notNull().default(nowSql),
   },
   (t) => [
     check('stock_movements_change_qty_check', sql`${t.changeQty} <> 0`),
@@ -285,28 +291,28 @@ export const stockMovements = pgTable(
 // ---------------------------------------------------------------------------
 // Receipt Counters (Gap-free receipt numbering per year)
 // ---------------------------------------------------------------------------
-export const receiptCounters = pgTable('receipt_counters', {
-  year: integer('year').primaryKey(),
-  lastNumber: integer('last_number').notNull().default(0),
+export const receiptCounters = mysqlTable('receipt_counters', {
+  year: int('year').primaryKey(),
+  lastNumber: int('last_number').notNull().default(0),
 });
 
 // ---------------------------------------------------------------------------
 // Settings (Single-row store settings)
 // ---------------------------------------------------------------------------
-export const settings = pgTable(
+export const settings = mysqlTable(
   'settings',
   {
-    id: integer('id').primaryKey().default(1),
-    shopName: text('shop_name').notNull().default('Colombo Auto Spares & Parts'),
+    id: int('id').primaryKey().default(1),
+    shopName: varchar('shop_name', { length: 255 }).notNull().default('Colombo Auto Spares & Parts'),
     address: text('address'),
-    phone: text('phone'),
+    phone: varchar('phone', { length: 255 }),
     receiptFooter: text('receipt_footer'),
-    cashierMaxDiscountPct: numeric('cashier_max_discount_pct', { precision: 5, scale: 2 })
+    cashierMaxDiscountPct: decimal('cashier_max_discount_pct', { precision: 5, scale: 2 })
       .notNull()
       .default('5.00'),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    updatedAt: ts('updated_at')
       .notNull()
-      .defaultNow()
+      .default(nowSql)
       .$onUpdate(() => new Date()),
   },
   (t) => [
