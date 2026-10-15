@@ -32,7 +32,7 @@ Users: one owner and several cashiers. Currency: LKR. Time zone: Asia/Colombo.
 - Receipt numbers are NOT sales ids (ids have gaps). Generate them from a counter row updated inside the checkout transaction, so they are gap-free.
 - Map MySQL errors to friendly messages with `getDbErrorKind()` in src/lib/db-errors.ts: ER_DUP_ENTRY (1062) unique, ER_CHECK_CONSTRAINT_VIOLATED (3819) check, ER_NO_REFERENCED_ROW_2 (1452) foreign key.
 - MySQL has no RETURNING or partial indexes: use `.$returningId()` after inserts, and the generated `internal_product_id` column (UNIQUE) to keep one internal barcode per product.
-- Barcodes live in product_barcodes (code UNIQUE). Every product has exactly one internal code ('20' + id padded to 8 digits); manufacturer codes are extra rows. Scans look up by exact code only.
+- Barcodes live in product_barcodes (code UNIQUE). Every product has exactly one internal code ('20' + 8 random digits from generateInternalBarcode(); never derive it from the id; create it with insertInternalBarcode() or getOrCreateInternalBarcode()); manufacturer codes are extra rows. Scans look up by exact code only.
 
 ## Security and roles
 - Roles: owner, cashier. No public sign-up. Only the owner creates cashier accounts.

@@ -18,6 +18,7 @@ import { eq, and, sql, count } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getDbErrorKind, mapDatabaseError } from '@/src/lib/db-errors';
+import { insertInternalBarcode, getOrCreateInternalBarcode } from '@/src/lib/internal-barcode';
 
 const nameInputSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(100, 'Name cannot exceed 100 characters'),
@@ -155,13 +156,8 @@ export async function executeCreateProduct(
         })
         .$returningId();
 
-      // 2. Insert internal barcode ('20' + id padded to 8 digits)
-      const internalBarcode = '20' + String(inserted.id).padStart(8, '0');
-      await tx.insert(productBarcodes).values({
-        productId: inserted.id,
-        code: internalBarcode,
-        kind: 'internal',
-      });
+      // 2. Give the product its internal barcode (random '20' + 8 digits)
+      await insertInternalBarcode(tx, inserted.id);
 
       // 3. Insert opening stock movement if openingStock > 0
       if (data.openingStock > 0) {
@@ -753,16 +749,24 @@ export async function searchProductsForLabels(
     true,
   );
 
-  return result.items.map((item) => ({
-    id: item.id,
-    sku: item.sku,
-    name: item.name,
-    partNumber: item.partNumber,
-    price: item.price,
-    internalBarcode:
-      item.internalBarcode || '20' + String(item.id).padStart(8, '0'),
-    stockQty: item.stockQty,
-  }));
+  return Promise.all(
+    result.items.map(async (item) => ({
+      id: item.id,
+      sku: item.sku,
+      name: item.name,
+      partNumber: item.partNumber,
+      price: item.price,
+      internalBarcode: item.internalBarcode || (await getOrCreateInternalBarcode(item.id)),
+      stockQty: item.stockQty,
+    })),
+  );
+}
+
+/** Internal barcode for a product, created on the spot if it has none (owner only). */
+export async function getInternalBarcode(productId: number): Promise<string> {
+  const { user } = await requireUser();
+  assertOwner(user);
+  return getOrCreateInternalBarcode(productId);
 }
 
 

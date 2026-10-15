@@ -4,6 +4,7 @@ import { db } from '@/src/db';
 import { settings } from '@/src/db/schema';
 import { eq } from 'drizzle-orm';
 import { getProductById } from '@/src/data/products';
+import { getOrCreateInternalBarcode } from '@/src/lib/internal-barcode';
 import { LabelsPrintView, QueueItem } from '@/components/labels/labels-print-view';
 
 export const metadata: Metadata = {
@@ -45,7 +46,7 @@ export default async function LabelsPage({ searchParams }: LabelsPageProps) {
             name: product.name,
             partNumber: product.partNumber,
             price: product.price,
-            internalBarcode: product.internalBarcode || '20' + String(product.id).padStart(8, '0'),
+            internalBarcode: product.internalBarcode || (await getOrCreateInternalBarcode(product.id)),
             stockQty: product.stockQty,
           },
           count: isNaN(count) || count < 1 ? 1 : count,

@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/table';
 import { BarcodeLabelItem, LabelProductData } from './barcode-label-item';
 import { lookupBarcode } from '@/src/actions/sales';
-import { searchProductsForLabels } from '@/src/actions/products';
+import { searchProductsForLabels, getInternalBarcode } from '@/src/actions/products';
 import { toast } from 'sonner';
 import {
   Printer,
@@ -99,10 +99,11 @@ export function LabelsPrintView({
       const barcodeRes = await lookupBarcode(clean);
       if (barcodeRes.success && barcodeRes.data) {
         const p = barcodeRes.data.product;
+        // A manufacturer barcode was scanned: label the part with its own internal code.
         const internalCode =
           barcodeRes.data.kind === 'internal'
             ? barcodeRes.data.code
-            : '20' + String(p.id).padStart(8, '0');
+            : await getInternalBarcode(p.id);
 
         const item = {
           id: p.id,

@@ -12,6 +12,8 @@ import { eq, sql } from 'drizzle-orm';
 import { executeCompleteSale, executeVoidSale, executeLookupBarcode } from '@/src/actions/sales';
 import { executeAdjustStock } from '@/src/actions/inventory';
 import { executeCreateProduct, executeAddManufacturerBarcode } from '@/src/actions/products';
+import { generateInternalBarcode, isValidInternalBarcode } from '@/src/lib/barcode';
+import { insertInternalBarcode, getOrCreateInternalBarcode } from '@/src/lib/internal-barcode';
 import {
   resetTestDatabase,
   TEST_OWNER,
@@ -348,16 +350,81 @@ describe('POS System Hardening & Core Transactions (pos_test)', () => {
     expect(newProdRes.success).toBe(true);
     const newId = newProdRes.data!.id;
 
-    // Verify product_barcodes has internal code '20' + zero-padded id
-    const expectedBarcode = '20' + String(newId).padStart(8, '0');
+    // Verify product_barcodes has exactly one internal code: '20' + 8 random digits
     const barcodes = await db
       .select()
       .from(productBarcodes)
       .where(eq(productBarcodes.productId, newId));
 
     expect(barcodes).toHaveLength(1);
-    expect(barcodes[0].code).toBe(expectedBarcode);
+    expect(barcodes[0].code).toMatch(/^20\d{8}$/);
+    expect(barcodes[0].code).not.toBe('20' + String(newId).padStart(8, '0')); // not derived from the id
     expect(barcodes[0].kind).toBe('internal');
+  });
+
+  it('generates random internal barcodes in the 20xxxxxxxx format', () => {
+    const codes = new Set<string>();
+    for (let i = 0; i < 500; i++) {
+      const code = generateInternalBarcode();
+      expect(code).toMatch(/^20\d{8}$/);
+      expect(isValidInternalBarcode(code)).toBe(true);
+      codes.add(code);
+    }
+    // 500 draws from 100M values: duplicates would mean the output is not random
+    expect(codes.size).toBeGreaterThan(495);
+  });
+
+  it('picks another code when a random internal barcode is already taken', async () => {
+    const [existing] = await db
+      .select({ code: productBarcodes.code })
+      .from(productBarcodes)
+      .where(eq(productBarcodes.productId, seed.product1Id));
+
+    // New product with no barcode yet
+    const [{ id: newProductId }] = await db
+      .insert(products)
+      .values({
+        sku: 'COLLIDE-01',
+        name: 'Collision Test Part',
+        partNumber: 'COL-001',
+        categoryId: (await db.select().from(products).where(eq(products.id, seed.product1Id)))[0].categoryId,
+        costPrice: '100.00',
+        price: '200.00',
+      })
+      .$returningId();
+
+    // Generator first returns a code that is already in use, then a free one
+    const candidates = [existing.code, existing.code, '2077777777'];
+    const code = await insertInternalBarcode(db, newProductId, () => candidates.shift()!);
+
+    expect(code).toBe('2077777777');
+    const rows = await db.select().from(productBarcodes).where(eq(productBarcodes.productId, newProductId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].code).toBe('2077777777');
+  });
+
+  it('does not retry when the product already has an internal barcode', async () => {
+    let calls = 0;
+    await expect(
+      insertInternalBarcode(db, seed.product1Id, () => {
+        calls++;
+        return '2088888888';
+      }),
+    ).rejects.toThrow();
+    expect(calls).toBe(1);
+  });
+
+  it('getOrCreateInternalBarcode returns the existing code, or creates one when missing', async () => {
+    const [existing] = await db
+      .select({ code: productBarcodes.code })
+      .from(productBarcodes)
+      .where(eq(productBarcodes.productId, seed.product1Id));
+    expect(await getOrCreateInternalBarcode(seed.product1Id)).toBe(existing.code);
+
+    await db.delete(productBarcodes).where(eq(productBarcodes.productId, seed.product2Id));
+    const created = await getOrCreateInternalBarcode(seed.product2Id);
+    expect(created).toMatch(/^20\d{8}$/);
+    expect(await getOrCreateInternalBarcode(seed.product2Id)).toBe(created); // stable on repeat
   });
 
   // 8. Barcode database constraints & duplicate error handling

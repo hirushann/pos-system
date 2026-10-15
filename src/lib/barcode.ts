@@ -1,11 +1,19 @@
 import bwipjs from 'bwip-js';
 
 /**
- * Format internal barcode: '20' + product id zero-padded to 8 digits
- * Example: product 123 -> '2000000123'
+ * Generate a random internal barcode: '20' followed by 8 random digits,
+ * e.g. '2048173906'. The '20' prefix marks it as an in-house code (it falls in
+ * the GS1 "store use" range, so it can't clash with manufacturer barcodes).
+ * Uniqueness is enforced by the database; callers retry on a collision.
  */
-export function formatInternalBarcode(productId: number): string {
-  return '20' + String(productId).padStart(8, '0');
+export function generateInternalBarcode(): string {
+  // Rejection sampling keeps all 8-digit values equally likely (no modulo bias).
+  const limit = Math.floor(0x100000000 / 100_000_000) * 100_000_000;
+  const buf = new Uint32Array(1);
+  do {
+    globalThis.crypto.getRandomValues(buf);
+  } while (buf[0] >= limit);
+  return '20' + String(buf[0] % 100_000_000).padStart(8, '0');
 }
 
 /**
