@@ -388,7 +388,7 @@ function ProductFormContent({
                   <button
                     type="button"
                     onClick={() => onOpenMetadata('category')}
-                    className="text-2xs text-primary hover:underline"
+                    className="shrink-0 whitespace-nowrap text-2xs text-primary hover:underline"
                   >
                     + New
                   </button>
@@ -419,7 +419,7 @@ function ProductFormContent({
                   <button
                     type="button"
                     onClick={() => onOpenMetadata('brand')}
-                    className="text-2xs text-primary hover:underline"
+                    className="shrink-0 whitespace-nowrap text-2xs text-primary hover:underline"
                   >
                     + New
                   </button>
@@ -472,7 +472,7 @@ function ProductFormContent({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Specs, warranty details, material..."
-                className="h-9 min-h-9 py-1"
+                className="min-h-20"
               />
             </div>
           </div>
@@ -817,7 +817,7 @@ export function ProductFormDialog({
 }: ProductFormDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
         {open && (
           <ProductFormContent
             key={product ? `edit-${product.id}` : 'create'}
