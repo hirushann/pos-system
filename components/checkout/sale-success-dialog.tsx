@@ -44,7 +44,7 @@ export function SaleSuccessDialog({
   if (!saleData) return null;
 
   const handlePrint = () => {
-    const invoiceUrl = `/sales/${saleData.saleId}/text-invoice?print=1`;
+    const invoiceUrl = `/sales/${saleData.saleId}/invoice`;
     window.open(invoiceUrl, '_blank', 'noopener,noreferrer,width=980,height=900');
   };
 

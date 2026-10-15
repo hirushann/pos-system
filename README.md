@@ -191,7 +191,17 @@ gunzip -c backups/pos_backup_<timestamp>.sql.gz | mysql -u root -p pos_dev_resto
 
 ## Printing on the Epson LQ-310 (fan-fold, 9.5 x 5.5 in)
 
-Invoices are printed as **plain text with the printer's own built-in fonts**, which is
+There are two ways to print an invoice:
+
+1. **Straight from the browser (default).** **Print Invoice** opens `/sales/<id>/invoice`, a
+   layout that is exactly **241.3 x 139.7 mm** (9.5 x 5.5 in) per form with zero page margin,
+   so no browser header/footer and no scaling. In the print dialog choose the 9.5 x 5.5 in
+   paper (on a Mac, add it under Paper Size > Manage Custom Sizes), Scale 100%, highest printer
+   quality. Up to about 9 items fit on a form; longer invoices continue on the next form.
+2. **Plain text with the printer's own fonts (sharper).** See below; needs the print agent.
+
+
+The plain-text route prints the invoice with **the printer's own built-in fonts**, which is
 much sharper than printing a web page as a picture. The POS builds the invoice as text plus
 ESC/P printer commands (`src/lib/escp-invoice.ts`). A small helper, the **print agent**
 (`scripts/print-agent.mjs`), runs on the computer the printer is plugged into and passes
