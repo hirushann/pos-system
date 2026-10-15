@@ -27,13 +27,20 @@ export interface BarcodeSvgOptions {
 export function generateBarcodeSvg(code: string, options: BarcodeSvgOptions = {}): string {
   const { height = 10, paddingwidth = 10 } = options;
   try {
-    return (bwipjs as unknown as { toSVG: (opts: Record<string, unknown>) => string }).toSVG({
+    const svg = (bwipjs as unknown as { toSVG: (opts: Record<string, unknown>) => string }).toSVG({
       bcid: 'code128',
       text: code,
       height,
       paddingwidth,
       includetext: false,
     });
+    // bwip-js emits only a viewBox, so the SVG would stretch to the full width of
+    // its container. Fill the parent box instead and keep the aspect ratio, so the
+    // label markup alone decides the physical size of the barcode.
+    return svg.replace(
+      /^<svg /,
+      '<svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style="display:block" ',
+    );
   } catch (err) {
     console.error('Failed to generate barcode SVG for code:', code, err);
     return '';

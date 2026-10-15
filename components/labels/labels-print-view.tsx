@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -64,6 +65,26 @@ export function LabelsPrintView({
     }
     return list;
   }, [queue]);
+
+  // One-off print of a single label (used by the per-row "Print 1" button).
+  const [singleLabel, setSingleLabel] = React.useState<LabelProductData | null>(null);
+  const printLabels = singleLabel ? [singleLabel] : flattenedLabels;
+
+  // The print area is portalled into <body>, outside the app shell, so the shell's
+  // fixed heights / scroll containers can't clip it or push labels onto extra pages.
+  const isClient = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
+  React.useEffect(() => {
+    if (!singleLabel) return;
+    const reset = () => setSingleLabel(null);
+    window.addEventListener('afterprint', reset, { once: true });
+    window.print();
+    return () => window.removeEventListener('afterprint', reset);
+  }, [singleLabel]);
 
   const handleSearch = async (query: string) => {
     const clean = query.trim();
@@ -138,6 +159,10 @@ export function LabelsPrintView({
     setQueue((prev) => prev.filter((item) => item.product.id !== productId));
   };
 
+  const handlePrintOne = (product: LabelProductData) => {
+    setSingleLabel(product);
+  };
+
   const handlePrint = () => {
     if (flattenedLabels.length === 0) {
       toast.error('Add at least one product to the label queue first.');
@@ -148,102 +173,51 @@ export function LabelsPrintView({
 
   return (
     <>
-      {/* Dynamic Print CSS */}
-      <style jsx global>{`
+      {/* Print CSS. Label sizes are set inline on each label; this only handles the
+          page size, hiding the app, and page breaks. */}
+      <style>{`
         @media screen {
           .print-only-container {
             display: none !important;
           }
-          .label-thermal-card {
-            width: 50mm;
-            height: 25mm;
-            padding: 1.5mm 2mm;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          }
-          .label-a4-card {
-            width: 38.1mm;
-            height: 21.2mm;
-            padding: 1mm 1.2mm;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          }
         }
 
         @media print {
-          /* Hide all application elements */
-          body * {
-            visibility: hidden;
+          @page {
+            size: ${layout === 'thermal' ? '50mm 25mm' : '210mm 297mm'};
+            margin: ${layout === 'thermal' ? '0' : '10.7mm 9.75mm'};
           }
-          nav, header, aside, .no-print, button, input {
-            display: none !important;
-          }
+          html,
           body {
             margin: 0 !important;
             padding: 0 !important;
-            background: white !important;
-            color: black !important;
+            height: auto !important;
+            overflow: visible !important;
+            background: #fff !important;
+            color: #000 !important;
           }
-
-          /* Make print container visible */
-          .print-only-container,
-          .print-only-container * {
-            visibility: visible !important;
+          body > *:not(.print-only-container) {
+            display: none !important;
           }
           .print-only-container {
             display: block !important;
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 0 !important;
           }
-
-          ${layout === 'thermal'
-            ? `
-            @page {
-              size: 50mm 25mm;
-              margin: 0mm;
-            }
-            .label-thermal-card {
-              page-break-after: always;
-              break-after: page;
-              width: 50mm !important;
-              height: 25mm !important;
-              box-sizing: border-box !important;
-              padding: 1.5mm 2mm !important;
-              display: flex !important;
-              flex-direction: column !important;
-              justify-content: space-between !important;
-              align-items: center !important;
-              overflow: hidden !important;
-              border: none !important;
-            }
-          `
-            : `
-            @page {
-              size: 210mm 297mm;
-              margin: 10.7mm 9.75mm;
-            }
-            .a4-sheet-grid {
-              display: grid !important;
-              grid-template-columns: repeat(5, 38.1mm) !important;
-              grid-auto-rows: 21.2mm !important;
-              page-break-after: always !important;
-              break-after: page !important;
-            }
-            .label-a4-card {
-              width: 38.1mm !important;
-              height: 21.2mm !important;
-              box-sizing: border-box !important;
-              padding: 1mm 1.2mm !important;
-              display: flex !important;
-              flex-direction: column !important;
-              justify-content: space-between !important;
-              align-items: center !important;
-              overflow: hidden !important;
-              border: none !important;
-            }
-          `}
+          .label-thermal-card {
+            break-after: page;
+            page-break-after: always;
+          }
+          .label-thermal-card:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
+          .a4-sheet-grid {
+            display: grid !important;
+            grid-template-columns: repeat(5, 38.1mm);
+            grid-auto-rows: 21.2mm;
+          }
+          .label-a4-card {
+            break-inside: avoid;
+          }
         }
       `}</style>
 
@@ -472,7 +446,7 @@ export function LabelsPrintView({
                   <TableHead className="w-32">Barcode</TableHead>
                   <TableHead className="w-24 text-center">Stock</TableHead>
                   <TableHead className="w-32 text-center">Label Count</TableHead>
-                  <TableHead className="w-16 text-right"></TableHead>
+                  <TableHead className="w-36 text-right"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -508,7 +482,18 @@ export function LabelsPrintView({
                         />
                       </div>
                     </TableCell>
-                    <TableCell className="text-right align-middle">
+                    <TableCell className="text-right align-middle whitespace-nowrap">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePrintOne(product)}
+                        className="mr-1 h-8 gap-1 text-xs"
+                        title="Print just one label for this part (good for test prints)"
+                        aria-label={`Print one label for ${product.partNumber}`}
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                        Print 1
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -560,34 +545,38 @@ export function LabelsPrintView({
         )}
       </div>
 
-      {/* Print-Only Container (Rendered during window.print()) */}
-      <div className="print-only-container">
-        {layout === 'thermal' ? (
-          <div>
-            {flattenedLabels.map((product, idx) => (
-              <BarcodeLabelItem
-                key={idx}
-                product={product}
-                shopName={shopName}
-                showPrice={showPrice}
-                layout="thermal"
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="a4-sheet-grid">
-            {flattenedLabels.map((product, idx) => (
-              <BarcodeLabelItem
-                key={idx}
-                product={product}
-                shopName={shopName}
-                showPrice={showPrice}
-                layout="a4"
-              />
-            ))}
-          </div>
+      {/* Print-Only Container (portalled to <body>, shown only by window.print()) */}
+      {isClient &&
+        createPortal(
+          <div className="print-only-container">
+            {layout === 'thermal' ? (
+              <div>
+                {printLabels.map((product, idx) => (
+                  <BarcodeLabelItem
+                    key={idx}
+                    product={product}
+                    shopName={shopName}
+                    showPrice={showPrice}
+                    layout="thermal"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="a4-sheet-grid">
+                {printLabels.map((product, idx) => (
+                  <BarcodeLabelItem
+                    key={idx}
+                    product={product}
+                    shopName={shopName}
+                    showPrice={showPrice}
+                    layout="a4"
+                  />
+                ))}
+              </div>
+            )}
+          </div>,
+          document.body,
         )}
-      </div>
     </>
   );
 }

@@ -37,7 +37,10 @@ export function BarcodeLabelItem({
 
   if (layout === 'thermal') {
     return (
-      <div className="label-thermal-card flex flex-col justify-between items-center text-black bg-white select-none overflow-hidden border border-black/10">
+      <div
+        className="label-thermal-card flex flex-col justify-between items-center text-black bg-white select-none overflow-hidden"
+        style={{ width: '50mm', height: '25mm', padding: '1.5mm 2mm', boxSizing: 'border-box' }}
+      >
         {/* Row 1: Shop Name */}
         <div className="w-full text-center text-[7px] font-semibold uppercase tracking-wider text-black/70 truncate px-1 pt-0.5">
           {shopName}
@@ -61,8 +64,8 @@ export function BarcodeLabelItem({
         {/* Row 4: Barcode SVG with intact quiet zones */}
         <div className="w-full flex flex-col items-center justify-center px-1">
           <div
-            className="w-full flex justify-center items-center overflow-visible"
-            style={{ maxHeight: '9mm' }}
+            className="w-full overflow-hidden"
+            style={{ height: '9mm' }}
             dangerouslySetInnerHTML={{ __html: svgString }}
           />
           {/* Row 5: Digits */}
@@ -76,7 +79,10 @@ export function BarcodeLabelItem({
 
   // A4 sheet: 38.1 x 21.2 mm
   return (
-    <div className="label-a4-card flex flex-col justify-between items-center text-black bg-white select-none overflow-hidden border border-black/10">
+    <div
+      className="label-a4-card flex flex-col justify-between items-center text-black bg-white select-none overflow-hidden"
+      style={{ width: '38.1mm', height: '21.2mm', padding: '1mm 1.2mm', boxSizing: 'border-box' }}
+    >
       {/* Row 1: Shop Name */}
       <div className="w-full text-center text-[6px] font-semibold uppercase tracking-wider text-black/70 truncate px-0.5 pt-0.5 leading-none">
         {shopName}
@@ -100,8 +106,8 @@ export function BarcodeLabelItem({
       {/* Row 4: Barcode SVG */}
       <div className="w-full flex flex-col items-center justify-center px-0.5 pb-0.5">
         <div
-          className="w-full flex justify-center items-center overflow-visible"
-          style={{ maxHeight: '7mm' }}
+          className="w-full overflow-hidden"
+          style={{ height: '7mm' }}
           dangerouslySetInnerHTML={{ __html: svgString }}
         />
         {/* Row 5: Digits */}
