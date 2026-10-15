@@ -70,7 +70,8 @@ const invoiceCss = `
     background: #fff;
     color: #000;
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 10pt;
+    font-size: 10.5pt;
+    font-weight: 700;
     line-height: 1.25;
     display: flex;
     flex-direction: column;
@@ -107,7 +108,7 @@ const invoiceCss = `
   }
   .inv-co p {
     margin: 0.5mm 0 0;
-    font-size: 10pt;
+    font-size: 10.5pt;
   }
   .inv-title {
     text-align: right;
@@ -122,25 +123,25 @@ const invoiceCss = `
   .inv-reprint {
     display: inline-block;
     margin-top: 0.8mm;
-    border: 1.5px solid #000;
+    border: 2px solid #000;
     padding: 0 2mm;
     font-weight: 700;
     letter-spacing: 0.08em;
-    font-size: 9pt;
+    font-size: 10pt;
   }
 
   /* One box: customer on the left, invoice details on the right */
   .inv-meta {
     display: flex;
     margin-top: 2.5mm;
-    border: 1.5px solid #000;
+    border: 2px solid #000;
   }
   .inv-meta-col {
     flex: 1;
     padding: 1.2mm 2.5mm;
   }
   .inv-meta-col + .inv-meta-col {
-    border-left: 1.5px solid #000;
+    border-left: 2px solid #000;
   }
   .inv-row {
     display: flex;
@@ -174,11 +175,12 @@ const invoiceCss = `
     border-top: 2px solid #000;
     border-bottom: 2px solid #000;
     padding: 1mm 1.5mm;
-    font-size: 9.5pt;
+    font-size: 10.5pt;
     font-weight: 700;
     text-align: left;
   }
   .inv-items td {
+    font-size: 11pt;
     padding: 0.6mm 1.5mm;
     vertical-align: top;
     word-break: break-word;
@@ -217,11 +219,11 @@ const invoiceCss = `
   }
   .inv-footer {
     margin-top: 1mm;
-    font-size: 9.5pt;
+    font-size: 10.5pt;
   }
   .inv-totals {
     width: 78mm;
-    border: 1.5px solid #000;
+    border: 2px solid #000;
   }
   .inv-totals-row {
     display: flex;
@@ -231,7 +233,7 @@ const invoiceCss = `
   .inv-totals-row.inv-grand {
     border-top: 2px solid #000;
     font-weight: 700;
-    font-size: 11.5pt;
+    font-size: 12pt;
     padding: 1.3mm 2.5mm;
   }
   .inv-totals-row span:last-child {
@@ -250,10 +252,10 @@ const invoiceCss = `
   }
   .inv-sign div {
     flex: 1;
-    border-top: 1.5px solid #000;
+    border-top: 2px solid #000;
     padding-top: 1mm;
     text-align: center;
-    font-size: 9.5pt;
+    font-size: 10.5pt;
   }
 
   @media print {
@@ -332,8 +334,8 @@ export function InvoiceView({ sale, shop, isReprint }: InvoiceViewProps) {
       </div>
       <p className="inv-hint">
         Printer: Epson LQ-310 &middot; Paper: 9.5 &times; 5.5 in fan-fold (custom size) &middot;
-        Scale: 100% &middot; Turn off &ldquo;Headers and footers&rdquo;. Print once &mdash; the 2-ply
-        paper makes the copy.
+        Scale: 100% &middot; Turn off &ldquo;Headers and footers&rdquo; &middot; Printer quality:
+        highest (not Draft). Print once &mdash; the 2-ply paper makes the copy.
       </p>
 
       <div className="inv-sheet">
@@ -403,12 +405,12 @@ export function InvoiceView({ sale, shop, isReprint }: InvoiceViewProps) {
           <div className="inv-items-wrap">
             <table className="inv-items">
               <colgroup>
-                <col style={{ width: '4.5%' }} />
-                <col style={{ width: '16.5%' }} />
-                <col style={{ width: '44%' }} />
-                <col style={{ width: '6%' }} />
-                <col style={{ width: '14.5%' }} />
-                <col style={{ width: '14.5%' }} />
+                <col style={{ width: '4%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '50%' }} />
+                <col style={{ width: '5%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '13%' }} />
               </colgroup>
               <thead>
                 <tr>
