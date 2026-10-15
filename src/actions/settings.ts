@@ -1,5 +1,6 @@
 'use server';
 
+import { DEFAULT_SHOP } from '@/src/lib/shop-defaults';
 import { db } from '@/src/db';
 import { settings } from '@/src/db/schema';
 import { requireOwner } from '@/src/lib/auth-guards';
@@ -75,11 +76,11 @@ export async function getSettingsData(): Promise<SettingsData> {
       .insert(settings)
       .values({
         id: 1,
-        shopName: 'Colombo Auto Spares & Parts',
-        address: 'No. 142, Panchikawatta Road, Colombo 10, Sri Lanka',
-        phone: '+94 11 234 5678',
-        receiptFooter: 'Thank you! Parts can be exchanged within 7 days with this bill.',
-        cashierMaxDiscountPct: '5.00',
+        shopName: DEFAULT_SHOP.shopName,
+        address: DEFAULT_SHOP.address,
+        phone: DEFAULT_SHOP.phone,
+        receiptFooter: DEFAULT_SHOP.receiptFooter,
+        cashierMaxDiscountPct: DEFAULT_SHOP.cashierMaxDiscountPct,
       })
       .onDuplicateKeyUpdate({ set: { id: sql`${settings.id}` } }); // no-op if another request inserted first
 
@@ -101,11 +102,11 @@ export async function getSettingsData(): Promise<SettingsData> {
 
   return (
     row ?? {
-      shopName: 'Colombo Auto Spares & Parts',
-      address: 'No. 142, Panchikawatta Road, Colombo 10, Sri Lanka',
-      phone: '+94 11 234 5678',
-      receiptFooter: 'Thank you! Parts can be exchanged within 7 days with this bill.',
-      cashierMaxDiscountPct: '5.00',
+      shopName: DEFAULT_SHOP.shopName,
+      address: DEFAULT_SHOP.address,
+      phone: DEFAULT_SHOP.phone,
+      receiptFooter: DEFAULT_SHOP.receiptFooter,
+      cashierMaxDiscountPct: DEFAULT_SHOP.cashierMaxDiscountPct,
     }
   );
 }

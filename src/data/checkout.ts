@@ -1,3 +1,4 @@
+import { DEFAULT_SHOP } from '@/src/lib/shop-defaults';
 import { db } from '@/src/db';
 import {
   products,
@@ -92,11 +93,11 @@ export async function getCheckoutInitialData(): Promise<CheckoutInitialData> {
 
   return {
     settings: storeSettings ?? {
-      shopName: 'Colombo Auto Spares & Parts',
-      address: 'No. 142, Panchikawatta Road, Colombo 10, Sri Lanka',
-      phone: '+94 11 234 5678',
-      cashierMaxDiscountPct: '5.00',
-      receiptFooter: 'Thank you! Parts can be exchanged within 7 days with this bill.',
+      shopName: DEFAULT_SHOP.shopName,
+      address: DEFAULT_SHOP.address,
+      phone: DEFAULT_SHOP.phone,
+      cashierMaxDiscountPct: DEFAULT_SHOP.cashierMaxDiscountPct,
+      receiptFooter: DEFAULT_SHOP.receiptFooter,
     },
     vehicleMakes: makeOptions,
     initialProducts,

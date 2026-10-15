@@ -23,6 +23,16 @@ export function formatLKR(value: MoneyInput): string {
 }
 
 /**
+ * Formats a monetary value without a currency prefix: "1,250.00" (for table columns).
+ */
+export function formatAmount(value: MoneyInput): string {
+  const d = toDecimal(value);
+  const [integerPart, decimalPart] = d.abs().toFixed(2).split('.');
+  const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${d.isNegative() ? '-' : ''}${formattedInteger}.${decimalPart}`;
+}
+
+/**
  * Adds two monetary values and returns a string with 2 decimal places.
  */
 export function add(a: MoneyInput, b: MoneyInput): string {

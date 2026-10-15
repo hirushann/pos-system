@@ -3,6 +3,7 @@ import { requireOwner } from '@/src/lib/auth-guards';
 import { db } from '@/src/db';
 import { settings } from '@/src/db/schema';
 import { eq } from 'drizzle-orm';
+import { DEFAULT_SHOP } from '@/src/lib/shop-defaults';
 import { getProductById } from '@/src/data/products';
 import { getOrCreateInternalBarcode } from '@/src/lib/internal-barcode';
 import { LabelsPrintView, QueueItem } from '@/components/labels/labels-print-view';
@@ -28,7 +29,7 @@ export default async function LabelsPage({ searchParams }: LabelsPageProps) {
     .from(settings)
     .where(eq(settings.id, 1));
 
-  const shopName = storeSettings?.shopName || 'Colombo Auto Spares & Parts';
+  const shopName = storeSettings?.shopName || DEFAULT_SHOP.shopName;
 
   const params = await searchParams;
   let initialQueueItem: QueueItem | null = null;

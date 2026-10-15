@@ -44,8 +44,8 @@ export function SaleSuccessDialog({
   if (!saleData) return null;
 
   const handlePrint = () => {
-    const receiptUrl = `/sales/${saleData.saleId}/receipt`;
-    window.open(receiptUrl, '_blank', 'noopener,noreferrer,width=400,height=700');
+    const invoiceUrl = `/sales/${saleData.saleId}/invoice`;
+    window.open(invoiceUrl, '_blank', 'noopener,noreferrer,width=980,height=900');
   };
 
   return (
@@ -67,7 +67,7 @@ export function SaleSuccessDialog({
             Sale Completed!
           </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Receipt: <strong className="font-mono text-foreground font-semibold">{saleData.receiptNumber}</strong>
+            Invoice: <strong className="font-mono text-foreground font-semibold">{saleData.receiptNumber}</strong>
           </p>
         </DialogHeader>
 
@@ -104,7 +104,7 @@ export function SaleSuccessDialog({
             onClick={handlePrint}
           >
             <Printer className="h-4 w-4" />
-            <span>Print Receipt</span>
+            <span>Print Invoice</span>
           </Button>
 
           <Button

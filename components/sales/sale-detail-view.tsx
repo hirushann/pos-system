@@ -41,8 +41,8 @@ export function SaleDetailView({ sale, isOwner }: SaleDetailViewProps) {
   const isVoided = sale.status === 'voided';
 
   const handlePrint = () => {
-    const receiptUrl = `/sales/${sale.id}/receipt?reprint=true`;
-    window.open(receiptUrl, '_blank', 'noopener,noreferrer,width=400,height=700');
+    const invoiceUrl = `/sales/${sale.id}/invoice?reprint=true`;
+    window.open(invoiceUrl, '_blank', 'noopener,noreferrer,width=980,height=900');
   };
 
   return (
@@ -91,7 +91,7 @@ export function SaleDetailView({ sale, isOwner }: SaleDetailViewProps) {
             className="gap-1.5 text-xs font-semibold"
           >
             <Printer className="h-3.5 w-3.5" />
-            <span>Reprint Receipt</span>
+            <span>Reprint Invoice</span>
           </Button>
 
           {isOwner && !isVoided && (
