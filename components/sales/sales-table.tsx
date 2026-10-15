@@ -208,7 +208,7 @@ export function SalesTable({
 
                         <Button asChild variant="outline" size="sm" className="h-7 text-xs px-2">
                           <Link
-                            href={`/sales/${sale.id}/invoice?reprint=true`}
+                            href={`/sales/${sale.id}/text-invoice?reprint=true`}
                             target="_blank"
                             rel="noopener noreferrer"
                           >

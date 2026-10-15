@@ -189,6 +189,66 @@ gunzip -c backups/pos_backup_<timestamp>.sql.gz | mysql -u root -p pos_dev_resto
 
 ---
 
+## Printing on the Epson LQ-310 (fan-fold, 9.5 x 5.5 in)
+
+Invoices are printed as **plain text with the printer's own built-in fonts**, which is
+much sharper than printing a web page as a picture. The POS builds the invoice as text plus
+ESC/P printer commands (`src/lib/escp-invoice.ts`). A small helper, the **print agent**
+(`scripts/print-agent.mjs`), runs on the computer the printer is plugged into and passes
+those bytes straight to the printer.
+
+Each invoice is one 5.5 in form (33 lines, about 14 items); longer invoices continue on the
+next form with the headings repeated. The page at `/sales/<id>/text-invoice` shows exactly
+what will print.
+
+### One-time setup (on the Mac the printer is connected to)
+
+1. Add the LQ-310 in **System Settings > Printers & Scanners** (USB) so macOS knows it.
+2. Find its device address and create a raw queue (a queue that sends data unchanged):
+   ```bash
+   lpstat -v                      # note the device URI of the LQ-310, e.g. usb://EPSON/LQ-310?serial=...
+   sudo lpadmin -p LQ310_RAW -E -v "PASTE-THE-DEVICE-URI-HERE" -m raw
+   ```
+3. Test that the printer's own fonts work (it should print "Hello" and eject the form):
+   ```bash
+   printf '\033@\033x1Hello from the LQ-310\r\n\f' | lp -d LQ310_RAW -o raw
+   ```
+4. Start the print agent (keep this Terminal window open while you work):
+   ```bash
+   cd pos-system
+   PRINTER_QUEUE=LQ310_RAW ALLOWED_ORIGINS=https://pos.dayzsolutions.com npm run print-agent
+   ```
+   `ALLOWED_ORIGINS` is the address of your POS website (comma-separate several). The agent
+   only accepts print jobs from those sites and only listens on this computer.
+
+Then, after a sale, **Print Invoice** opens the text invoice and prints it automatically.
+Use **Chrome**: it asks once for permission to talk to the local print agent (allow it).
+Safari blocks websites from talking to local programs, so use **Download .prn** there and
+print the file with `lp -d LQ310_RAW -o raw INV-....prn`.
+
+### Loading the paper
+
+Fit the fan-fold on the tractors and align the top of a form with the print head
+(tear-off position). Each invoice starts one line below the top of the form and ends with a
+form feed, so the next form lines up on its own.
+
+### Adjusting the layout
+
+Defaults live in `TEXT_INVOICE_DEFAULTS` in `src/lib/escp-invoice.ts`:
+
+| Setting | Default | Meaning |
+| :--- | :--- | :--- |
+| `typeface` | `1` | Built-in font: 0 Roman, 1 Sans Serif, 2 Courier, 3 Prestige |
+| `cols` | `92` | Characters per line at 12 cpi (the LQ-310 prints up to 96 / 8.0 in) |
+| `leftMargin` | `0` | Columns to shift everything right if the text sits too close to the tractor holes |
+| `doubleStrike` | `false` | Print each line twice for a darker carbon copy |
+| `formLines` / `usableLines` | `33` / `31` | Lines per 5.5 in form / lines of content per form |
+
+The graphics invoice (`/sales/<id>/invoice`) is still available as a fallback from the
+text invoice page.
+
+---
+
 ## Role Permissions & Security
 
 | Action / Resource | Store Owner | Cashier |

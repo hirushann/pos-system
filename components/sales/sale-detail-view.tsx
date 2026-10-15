@@ -41,7 +41,7 @@ export function SaleDetailView({ sale, isOwner }: SaleDetailViewProps) {
   const isVoided = sale.status === 'voided';
 
   const handlePrint = () => {
-    const invoiceUrl = `/sales/${sale.id}/invoice?reprint=true`;
+    const invoiceUrl = `/sales/${sale.id}/text-invoice?reprint=true`;
     window.open(invoiceUrl, '_blank', 'noopener,noreferrer,width=980,height=900');
   };
 
