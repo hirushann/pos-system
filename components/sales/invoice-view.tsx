@@ -8,6 +8,7 @@ import { formatAmount } from '@/src/lib/money';
 import { formatColomboDate, formatColomboTime } from '@/src/lib/dates';
 import type { SaleDetail } from '@/src/data/sales';
 import type { ShopProfile } from '@/src/data/shop';
+import { paginateItems } from '@/src/lib/invoice-pagination';
 
 interface InvoiceViewProps {
   sale: SaleDetail;
@@ -21,8 +22,9 @@ interface InvoiceViewProps {
  * Every form is EXACTLY 241.3mm x 139.7mm (9.5in x 5.5in): the print page is that size
  * with zero page margin (so the browser adds no header/footer text and no scaling), and
  * each form is a fixed-size box with its own inner padding that keeps clear of the
- * tractor-hole strips. One invoice = one form for up to ~9 items; longer invoices
- * continue on the next form with the headings repeated and totals on the last form.
+ * tractor-hole strips. A form holds up to 7 items; with 8 or more items the invoice
+ * continues on the next form (headings repeated) and the totals + signatures are
+ * printed on the last form, which keeps a roomy blank space for signing.
  *
  * Dot-matrix rules this layout follows:
  *   - pure black only: no grey text, shading or hairlines (they print faint or dotted)
@@ -31,49 +33,6 @@ interface InvoiceViewProps {
  */
 const FORM_WIDTH_MM = 241.3;
 const FORM_HEIGHT_MM = 139.7;
-
-// Item lines that fit on a form: with the totals + signatures (last form) and without
-const LINES_LAST_FORM = 9;
-const LINES_MIDDLE_FORM = 12;
-
-// Rough characters per line in the Description / Part No columns (bold 11pt)
-const DESC_CHARS = 50;
-const PART_CHARS = 13;
-
-type Item = SaleDetail['items'][number];
-
-function itemLines(item: Item): number {
-  return Math.max(
-    1,
-    Math.ceil(item.productName.length / DESC_CHARS),
-    Math.ceil(item.partNumber.length / PART_CHARS),
-  );
-}
-
-/** Splits the items over as many forms as needed; the last form keeps room for the totals. */
-export function paginateItems(items: Item[], reservedLines = 0): Item[][] {
-  const middleCap = LINES_MIDDLE_FORM - reservedLines;
-  const lastCap = LINES_LAST_FORM - reservedLines;
-  const forms: Item[][] = [[]];
-  let used = 0;
-  for (const item of items) {
-    const lines = itemLines(item);
-    const current = forms[forms.length - 1];
-    if (current.length > 0 && used + lines > middleCap) {
-      forms.push([]);
-      used = 0;
-    }
-    forms[forms.length - 1].push(item);
-    used += lines;
-  }
-  // The last form also has to fit the totals: move items to a new form until it does
-  const size = (form: Item[]) => form.reduce((n, it) => n + itemLines(it), 0);
-  while (forms[forms.length - 1].length > 1 && size(forms[forms.length - 1]) > lastCap) {
-    const moved = forms[forms.length - 1].pop()!;
-    forms.push([moved]);
-  }
-  return forms;
-}
 
 const invoiceCss = `
   .inv-screen {
@@ -113,7 +72,7 @@ const invoiceCss = `
     position: relative;
     width: ${FORM_WIDTH_MM}mm;
     height: ${FORM_HEIGHT_MM}mm;
-    padding: 6mm 14mm;
+    padding: 5mm 14mm 6mm;
     overflow: hidden;
     background: #fff;
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
@@ -153,7 +112,7 @@ const invoiceCss = `
     justify-content: space-between;
     align-items: flex-end;
     gap: 6mm;
-    padding-bottom: 2mm;
+    padding-bottom: 1.5mm;
     border-bottom: 2px solid #000;
   }
   .inv-co h1 {
@@ -189,7 +148,7 @@ const invoiceCss = `
   /* One box: customer on the left, invoice details on the right */
   .inv-meta {
     display: flex;
-    margin-top: 2.5mm;
+    margin-top: 2mm;
     border: 2px solid #000;
   }
   .inv-meta-col {
@@ -202,7 +161,7 @@ const invoiceCss = `
   .inv-row {
     display: flex;
     gap: 2mm;
-    min-height: 4.6mm;
+    min-height: 4.4mm;
   }
   .inv-row-label {
     flex: 0 0 22mm;
@@ -217,7 +176,7 @@ const invoiceCss = `
   .inv-items-wrap {
     flex: 1;
     min-height: 0;
-    margin-top: 2.5mm;
+    margin-top: 2mm;
     border-bottom: 2px solid #000;
   }
   .inv-items {
@@ -261,7 +220,7 @@ const invoiceCss = `
     justify-content: space-between;
     align-items: flex-start;
     gap: 6mm;
-    margin-top: 2mm;
+    margin-top: 1.5mm;
   }
   .inv-pay {
     flex: 1;
@@ -298,7 +257,7 @@ const invoiceCss = `
     display: flex;
     justify-content: space-between;
     gap: 18mm;
-    margin-top: 4mm;
+    margin-top: 9mm; /* blank space above the lines for the signatures */
   }
   .inv-sign div {
     flex: 1;
@@ -352,8 +311,8 @@ export function InvoiceView({ sale, shop, isReprint }: InvoiceViewProps) {
   const isVoided = sale.status === 'voided';
   const hasDiscount = Number(sale.discount) > 0;
 
-  // The void banner takes about one item line of space on every form
-  const forms = React.useMemo(() => paginateItems(sale.items, isVoided ? 1 : 0), [sale.items, isVoided]);
+  // The void banner takes about two item lines of space on every form
+  const forms = React.useMemo(() => paginateItems(sale.items, isVoided ? 2 : 0), [sale.items, isVoided]);
   const formCount = forms.length;
 
   // Name the PDF / print job after the invoice number
