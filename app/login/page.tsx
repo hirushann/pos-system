@@ -2,7 +2,9 @@
 
 import * as React from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Wrench, AlertCircle, Loader2 } from 'lucide-react';
+import Image from 'next/image';
+import { AlertCircle, Loader2 } from 'lucide-react';
+import { BRAND } from '@/src/lib/brand';
 import { authClient, useSession } from '@/src/lib/auth-client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,7 +92,7 @@ function LoginForm() {
           type="email"
           required
           autoFocus
-          placeholder="name@autospares.lk"
+          placeholder="name@example.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           disabled={isLoading}
@@ -145,12 +147,15 @@ export default function LoginPage() {
       <div className="w-full max-w-md space-y-6">
         {/* Brand header */}
         <div className="flex flex-col items-center text-center space-y-2">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md">
-            <Wrench className="h-6 w-6" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-            Colombo Auto Spares
-          </h1>
+          <Image
+            src={BRAND.logo}
+            alt={BRAND.name}
+            width={BRAND.logoWidth}
+            height={BRAND.logoHeight}
+            priority
+            className="h-40 w-auto rounded-2xl bg-white p-2 shadow-sm sm:h-48"
+          />
+          <h1 className="sr-only">{BRAND.name}</h1>
           <p className="text-sm text-muted-foreground">
             Point of Sale & Inventory System
           </p>

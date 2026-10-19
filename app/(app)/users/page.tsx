@@ -7,7 +7,7 @@ import { formatColomboDate } from '@/src/lib/dates';
 import { UsersTable, type StaffUser } from './users-table';
 
 export const metadata: Metadata = {
-  title: 'Staff Management | AutoParts POS',
+  title: 'Staff Management | Jayaweera Logistic & Motors',
 };
 
 export const dynamic = 'force-dynamic';

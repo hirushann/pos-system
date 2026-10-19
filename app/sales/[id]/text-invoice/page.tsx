@@ -7,7 +7,7 @@ import { buildTextInvoice } from '@/src/lib/escp-invoice';
 import { TextInvoiceView } from '@/components/sales/text-invoice-view';
 
 export const metadata: Metadata = {
-  title: 'Print Invoice | AutoParts POS',
+  title: 'Print Invoice | Jayaweera Logistic & Motors',
   description: 'Plain-text invoice for the Epson LQ-310 dot-matrix printer.',
 };
 

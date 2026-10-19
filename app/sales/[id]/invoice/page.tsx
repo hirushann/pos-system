@@ -6,7 +6,7 @@ import { getShopProfile } from '@/src/data/shop';
 import { InvoiceView } from '@/components/sales/invoice-view';
 
 export const metadata: Metadata = {
-  title: 'Print Invoice | AutoParts POS',
+  title: 'Print Invoice | Jayaweera Logistic & Motors',
   description: 'A4 invoice for dot-matrix printing.',
 };
 

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   ShoppingCart,
@@ -13,7 +14,6 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Wrench,
   Database,
   Printer,
 } from 'lucide-react';
@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/sheet';
 
 import { useSession } from '@/src/lib/auth-client';
+import { BRAND } from '@/src/lib/brand';
 
 interface NavItem {
   title: string;
@@ -109,12 +110,16 @@ export function AppSidebar() {
         <SheetContent side="left" className="w-72 p-0">
           <SheetHeader className="border-b px-6 py-4 text-left">
             <SheetTitle className="flex items-center gap-2 text-base font-semibold">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Wrench className="h-4 w-4" />
-              </div>
+              <Image
+                src={BRAND.emblem}
+                alt=""
+                width={32}
+                height={32}
+                className="h-8 w-8 shrink-0 rounded-lg bg-white object-contain"
+              />
               <div className="flex flex-col">
-                <span className="leading-none">AutoParts POS</span>
-                <span className="text-xs font-normal text-muted-foreground">Sri Lanka</span>
+                <span className="leading-tight">{BRAND.name}</span>
+                <span className="text-xs font-normal text-muted-foreground">{BRAND.subtitle}</span>
               </div>
             </SheetTitle>
           </SheetHeader>
@@ -149,13 +154,17 @@ export function AppSidebar() {
           )}
         >
           <div className="flex items-center gap-2.5 overflow-hidden">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-xs">
-              <Wrench className="h-4 w-4" />
-            </div>
+            <Image
+              src={BRAND.emblem}
+              alt={BRAND.name}
+              width={36}
+              height={36}
+              className="h-9 w-9 shrink-0 rounded-lg bg-white object-contain shadow-xs"
+            />
             {!isCollapsed && (
               <div className="flex flex-col overflow-hidden">
-                <span className="truncate text-sm font-semibold tracking-tight">AutoParts POS</span>
-                <span className="truncate text-xs text-muted-foreground">Spare Parts Shop</span>
+                <span className="text-sm font-semibold leading-tight tracking-tight">{BRAND.name}</span>
+                <span className="truncate text-xs text-muted-foreground">{BRAND.subtitle}</span>
               </div>
             )}
           </div>

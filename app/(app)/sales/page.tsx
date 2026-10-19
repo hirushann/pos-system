@@ -12,7 +12,7 @@ import { SalesFilters } from '@/components/sales/sales-filters';
 import { SalesTable } from '@/components/sales/sales-table';
 
 export const metadata: Metadata = {
-  title: 'Sales & Receipts | AutoParts POS',
+  title: 'Sales & Receipts | Jayaweera Logistic & Motors',
   description: 'View sales transaction records, receipts, and order histories.',
 };
 

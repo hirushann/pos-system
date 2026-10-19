@@ -115,6 +115,18 @@ const invoiceCss = `
     padding-bottom: 1.5mm;
     border-bottom: 2px solid #000;
   }
+  .inv-brand {
+    display: flex;
+    align-items: center;
+    gap: 3mm;
+  }
+  /* Black-and-white emblem: colour and tints do not print on a dot-matrix head */
+  .inv-logo {
+    display: block;
+    height: 11mm;
+    width: auto;
+    flex-shrink: 0;
+  }
   .inv-co h1 {
     margin: 0;
     font-size: 15pt;
@@ -321,8 +333,10 @@ export function InvoiceView({ sale, shop, isReprint }: InvoiceViewProps) {
     document.title = `Invoice ${sale.receiptNumber}`;
 
     // Open the print dialog straight away, like the receipt page does
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       try {
+        // Wait for the logo to be decoded so it is in the printout
+        await Promise.all(Array.from(document.images).map((img) => img.decode().catch(() => undefined)));
         window.print();
       } catch {
         // User may have cancelled or the browser blocked it
@@ -387,15 +401,20 @@ export function InvoiceView({ sale, shop, isReprint }: InvoiceViewProps) {
 
                 {/* Company header */}
                 <header className="inv-head">
-                  <div className="inv-co">
-                    <h1>{shop.shopName}</h1>
-                    {(shop.address || shop.phone) && (
-                      <p>
-                        {shop.address}
-                        {shop.address && shop.phone ? ' · ' : ''}
-                        {shop.phone ? `Tel: ${shop.phone}` : ''}
-                      </p>
-                    )}
+                  <div className="inv-brand">
+                    {/* Plain <img> on purpose: it must be loaded before the page prints */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img className="inv-logo" src="/logo-invoice.png" alt="" />
+                    <div className="inv-co">
+                      <h1>{shop.shopName}</h1>
+                      {(shop.address || shop.phone) && (
+                        <p>
+                          {shop.address}
+                          {shop.address && shop.phone ? ' · ' : ''}
+                          {shop.phone ? `Tel: ${shop.phone}` : ''}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div className="inv-title">
                     <div className="inv-title-text">INVOICE</div>

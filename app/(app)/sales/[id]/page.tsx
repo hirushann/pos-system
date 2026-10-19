@@ -5,7 +5,7 @@ import { getSaleDetail } from '@/src/data/sales';
 import { SaleDetailView } from '@/components/sales/sale-detail-view';
 
 export const metadata: Metadata = {
-  title: 'Sale Details | AutoParts POS',
+  title: 'Sale Details | Jayaweera Logistic & Motors',
   description: 'View full line items, order summary, and transaction status.',
 };
 

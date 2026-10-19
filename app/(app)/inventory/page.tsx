@@ -8,7 +8,7 @@ import {
 import { InventoryView } from '@/components/inventory/inventory-view';
 
 export const metadata: Metadata = {
-  title: 'Inventory & Stock Tracking | AutoParts POS',
+  title: 'Inventory & Stock Tracking | Jayaweera Logistic & Motors',
 };
 
 interface InventoryPageProps {

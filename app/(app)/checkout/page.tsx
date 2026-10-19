@@ -4,7 +4,7 @@ import { getCheckoutInitialData } from '@/src/data/checkout';
 import { CheckoutTerminal } from '@/components/checkout/checkout-terminal';
 
 export const metadata: Metadata = {
-  title: 'Checkout Register | AutoParts POS',
+  title: 'Checkout Register | Jayaweera Logistic & Motors',
   description: 'Fast keyboard-driven point of sale billing and checkout.',
 };
 

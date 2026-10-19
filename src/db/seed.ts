@@ -13,6 +13,7 @@ import {
   settings,
 } from './schema';
 import { user } from './auth-schema';
+import { DEFAULT_SHOP } from '../lib/shop-defaults';
 
 async function seed() {
   const dbUrl = process.env.DATABASE_URL || '';
@@ -66,11 +67,11 @@ async function seed() {
       .ignore()
       .values({
         id: 1,
-        shopName: 'Colombo Auto Spares & Parts',
-        address: 'No. 142, Panchikawatta Road, Colombo 10, Sri Lanka',
-        phone: '+94 11 234 5678',
-        receiptFooter: 'Thank you! Parts can be exchanged within 7 days with this bill.',
-        cashierMaxDiscountPct: '5.00',
+        shopName: DEFAULT_SHOP.shopName,
+        address: DEFAULT_SHOP.address,
+        phone: DEFAULT_SHOP.phone,
+        receiptFooter: DEFAULT_SHOP.receiptFooter,
+        cashierMaxDiscountPct: DEFAULT_SHOP.cashierMaxDiscountPct,
       });
 
     // -------------------------------------------------------------------------

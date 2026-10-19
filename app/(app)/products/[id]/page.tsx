@@ -5,7 +5,7 @@ import { getProductById } from '@/src/data/products';
 import { ProductDetailView } from '@/components/products/product-detail-view';
 
 export const metadata: Metadata = {
-  title: 'Product Details | AutoParts POS',
+  title: 'Product Details | Jayaweera Logistic & Motors',
   description: 'View spare part details, barcode specifications, and vehicle fitments.',
 };
 

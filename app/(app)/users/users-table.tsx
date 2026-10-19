@@ -374,7 +374,7 @@ export function UsersTable({ users, currentUserId }: UsersTableProps) {
               <Input
                 type="email"
                 required
-                placeholder="e.g. kasun@autospares.lk"
+                placeholder="e.g. kasun@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />

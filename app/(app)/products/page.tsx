@@ -10,7 +10,7 @@ import {
 import { ProductsView } from '@/components/products/products-view';
 
 export const metadata: Metadata = {
-  title: 'Spare Parts Catalog | AutoParts POS',
+  title: 'Spare Parts Catalog | Jayaweera Logistic & Motors',
 };
 
 interface ProductsPageProps {

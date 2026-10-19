@@ -4,7 +4,7 @@ import { getSettingsData } from '@/src/actions/settings';
 import { SettingsForm } from '@/components/settings/settings-form';
 
 export const metadata: Metadata = {
-  title: 'Store Settings | AutoParts POS',
+  title: 'Store Settings | Jayaweera Logistic & Motors',
 };
 
 export default async function SettingsPage() {

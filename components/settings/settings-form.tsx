@@ -85,7 +85,7 @@ export function SettingsForm({ initialData }: SettingsFormProps) {
               required
               value={shopName}
               onChange={(e) => setShopName(e.target.value)}
-              placeholder="Colombo Auto Spares & Parts"
+              placeholder="Jayaweera Logistic & Motors (Pvt) Ltd"
               className="h-10 focus-visible:ring-2 focus-visible:ring-ring"
               disabled={isSaving}
             />
@@ -107,7 +107,7 @@ export function SettingsForm({ initialData }: SettingsFormProps) {
                 name="phone"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                placeholder="+94 11 234 5678"
+                placeholder="0778253254"
                 className="h-10 focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={isSaving}
               />
@@ -128,7 +128,7 @@ export function SettingsForm({ initialData }: SettingsFormProps) {
                 name="address"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
-                placeholder="No. 142, Panchikawatta Road, Colombo 10"
+                placeholder="Mahena, Ambeepussa"
                 className="h-10 focus-visible:ring-2 focus-visible:ring-ring"
                 disabled={isSaving}
               />

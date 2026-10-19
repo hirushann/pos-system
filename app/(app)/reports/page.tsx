@@ -19,7 +19,7 @@ import { ReportsTabs } from '@/components/reports/reports-tabs';
 import { ReportsHeader } from '@/components/reports/reports-header';
 
 export const metadata: Metadata = {
-  title: 'Reports & Analytics | AutoParts POS',
+  title: 'Reports & Analytics | Jayaweera Logistic & Motors',
 };
 
 interface ReportsPageProps {

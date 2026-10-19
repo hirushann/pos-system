@@ -11,7 +11,7 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: 'AutoParts POS',
+  title: 'Jayaweera Logistic & Motors',
   description: 'Point of Sale & Inventory System',
 };
 

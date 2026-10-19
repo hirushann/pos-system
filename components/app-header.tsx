@@ -2,7 +2,9 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { Menu, Store, UserCircle, LogOut, ShieldCheck } from 'lucide-react';
+import Image from 'next/image';
+import { Menu, UserCircle, LogOut, ShieldCheck } from 'lucide-react';
+import { BRAND } from '@/src/lib/brand';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -47,18 +49,15 @@ export function AppHeader() {
 
         {/* Shop Name Placeholder */}
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted text-muted-foreground">
-            <Store className="h-4 w-4" />
-          </div>
+          <Image
+            src={BRAND.emblem}
+            alt=""
+            width={32}
+            height={32}
+            className="h-8 w-8 shrink-0 rounded-md bg-white object-contain"
+          />
           <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm sm:text-base leading-tight">
-                Colombo Auto Spares & Parts
-              </span>
-              <Badge variant="outline" className="hidden sm:inline-flex text-[10px] py-0 px-1.5 font-normal">
-                Colombo 10
-              </Badge>
-            </div>
+            <span className="font-semibold text-sm sm:text-base leading-tight">{BRAND.name}</span>
             <span className="text-xs text-muted-foreground">Retail Point of Sale</span>
           </div>
         </div>

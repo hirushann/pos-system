@@ -1,4 +1,4 @@
-# AutoParts POS — Retail Spare Parts Point of Sale & Inventory System
+# Jayaweera Logistic & Motors POS — Point of Sale & Inventory System
 
 A high-performance Point of Sale and Inventory Management system tailored for a retail vehicle spare parts shop in Sri Lanka.
 
@@ -120,9 +120,9 @@ The POS enforces strict role boundaries: cashiers cannot create accounts or acce
 
 Provision the initial store owner account:
 ```bash
-npm run create-owner
+npm run create-owner -- --email owner@example.com --name "Owner Name"
 ```
-*Follow the interactive prompt to set the owner's name, email, and password (e.g. `owner@autospares.lk` / `Owner123!`).*
+*The script prints a generated password once: copy it when it appears. Run it again with the same email to reset that password.*
 
 ---
 

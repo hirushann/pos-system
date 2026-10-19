@@ -9,7 +9,7 @@ import { getOrCreateInternalBarcode } from '@/src/lib/internal-barcode';
 import { LabelsPrintView, QueueItem } from '@/components/labels/labels-print-view';
 
 export const metadata: Metadata = {
-  title: 'Print Barcode Labels | AutoParts POS',
+  title: 'Print Barcode Labels | Jayaweera Logistic & Motors',
   description: 'Print Code 128 barcode labels for thermal printers and A4 sticker sheets.',
 };
 

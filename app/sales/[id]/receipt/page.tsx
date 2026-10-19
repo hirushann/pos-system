@@ -5,7 +5,7 @@ import { getSaleReceiptData } from '@/src/actions/sales';
 import { ReceiptView } from '@/components/checkout/receipt-view';
 
 export const metadata: Metadata = {
-  title: 'Print Receipt | AutoParts POS',
+  title: 'Print Receipt | Jayaweera Logistic & Motors',
   description: '80mm thermal receipt print format.',
 };
 
