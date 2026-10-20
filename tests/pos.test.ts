@@ -7,13 +7,26 @@ import {
   stockMovements,
   receiptCounters,
   productBarcodes,
+  productPartNumbers,
+  categories,
+  brands,
 } from '@/src/db/schema';
+import { previewProductImport, commitProductImport, exportProductsCsv } from '@/src/data/product-import';
 import { eq, sql } from 'drizzle-orm';
-import { executeCompleteSale, executeVoidSale, executeLookupBarcode } from '@/src/actions/sales';
+import {
+  executeCompleteSale,
+  executeVoidSale,
+  executeLookupBarcode,
+  executeDeleteSale,
+} from '@/src/actions/sales';
 import { executeAdjustStock } from '@/src/actions/inventory';
 import { executeCreateProduct, executeAddManufacturerBarcode } from '@/src/actions/products';
 import { generateInternalBarcode, isValidInternalBarcode } from '@/src/lib/barcode';
-import { insertInternalBarcode, getOrCreateInternalBarcode } from '@/src/lib/internal-barcode';
+import {
+  insertInternalBarcode,
+  getOrCreateInternalBarcode,
+  generateUniqueProductCode,
+} from '@/src/lib/internal-barcode';
 import {
   resetTestDatabase,
   TEST_OWNER,
@@ -326,12 +339,11 @@ describe('POS System Hardening & Core Transactions (pos_test)', () => {
   });
 
   // 7. Internal barcode generated in same transaction on product creation
-  it('creates product and automatically inserts internal barcode in the same transaction', async () => {
+  it('creates a product with a generated SKU that is also its internal barcode', async () => {
     const [p1] = await db.select().from(products).where(eq(products.id, seed.product1Id));
 
     const newProdRes = await executeCreateProduct(
       {
-        sku: 'NEW-PART-01',
         name: 'New Test Oil Filter',
         partNumber: 'OIL-FLT-999',
         categoryId: p1.categoryId,
@@ -349,17 +361,90 @@ describe('POS System Hardening & Core Transactions (pos_test)', () => {
 
     expect(newProdRes.success).toBe(true);
     const newId = newProdRes.data!.id;
+    const [created] = await db.select().from(products).where(eq(products.id, newId));
 
-    // Verify product_barcodes has exactly one internal code: '20' + 8 random digits
-    const barcodes = await db
-      .select()
-      .from(productBarcodes)
-      .where(eq(productBarcodes.productId, newId));
+    // The SKU was generated: '20' + 8 random digits, not derived from the id
+    expect(created.sku).toMatch(/^20\d{8}$/);
+    expect(created.sku).not.toBe('20' + String(newId).padStart(8, '0'));
 
+    // ... and it IS the product's one internal barcode, so scanning the SKU finds the product
+    const barcodes = await db.select().from(productBarcodes).where(eq(productBarcodes.productId, newId));
     expect(barcodes).toHaveLength(1);
-    expect(barcodes[0].code).toMatch(/^20\d{8}$/);
-    expect(barcodes[0].code).not.toBe('20' + String(newId).padStart(8, '0')); // not derived from the id
     expect(barcodes[0].kind).toBe('internal');
+    expect(barcodes[0].code).toBe(created.sku);
+    const scanned = await executeLookupBarcode(created.sku);
+    expect(scanned.success).toBe(true);
+    expect(scanned.data?.product.id).toBe(newId);
+  });
+
+  it('ignores a SKU sent by the client: SKUs are only ever generated', async () => {
+    const [p1] = await db.select().from(products).where(eq(products.id, seed.product1Id));
+    const res = await executeCreateProduct(
+      {
+        sku: 'MY-OWN-SKU',
+        name: 'Tries To Pick A SKU',
+        partNumber: 'PN-X',
+        categoryId: p1.categoryId,
+        costPrice: '1.00',
+        price: '2.00',
+        openingStock: 0,
+        reorderLevel: 0,
+        unit: 'pcs',
+        isActive: true,
+        alternatePartNumbers: [],
+        fitments: [],
+      } as unknown as Parameters<typeof executeCreateProduct>[0],
+      TEST_OWNER,
+    );
+    expect(res.success).toBe(true);
+    const [created] = await db.select().from(products).where(eq(products.id, res.data!.id));
+    expect(created.sku).not.toBe('MY-OWN-SKU');
+    expect(created.sku).toMatch(/^20\d{8}$/);
+  });
+
+  it('gives every new product a different SKU, even when created at the same time', async () => {
+    const [p1] = await db.select().from(products).where(eq(products.id, seed.product1Id));
+    const make = (n: number) =>
+      executeCreateProduct(
+        {
+          name: `Bulk ${n}`,
+          partNumber: `BULK-${n}`,
+          categoryId: p1.categoryId,
+          costPrice: '1.00',
+          price: '2.00',
+          openingStock: 0,
+          reorderLevel: 0,
+          unit: 'pcs',
+          isActive: true,
+          alternatePartNumbers: [],
+          fitments: [],
+        },
+        TEST_OWNER,
+      );
+    const results = await Promise.all(Array.from({ length: 15 }, (_, i) => make(i)));
+    expect(results.every((r) => r.success)).toBe(true);
+
+    const skus = (await db.select({ sku: products.sku }).from(products)).map((r) => r.sku);
+    expect(new Set(skus.map((s) => s.toLowerCase())).size).toBe(skus.length); // all SKUs unique
+    const codes = (await db.select({ code: productBarcodes.code }).from(productBarcodes)).map((r) => r.code);
+    expect(new Set(codes.map((c) => c.toLowerCase())).size).toBe(codes.length); // all barcodes unique
+  });
+
+  it('a generated SKU never clashes with an existing SKU or any existing barcode', async () => {
+    // product 1 has an internal barcode; also add a manufacturer barcode to product 2
+    const [internal] = await db.select().from(productBarcodes).where(eq(productBarcodes.productId, seed.product1Id));
+    await db.insert(productBarcodes).values({ productId: seed.product2Id, code: '2055555555', kind: 'manufacturer' });
+    const taken = [internal.code, '2055555555', 'TEST-PAD-01'];
+    const sequence = [...taken, '2066666666'];
+
+    const code = await generateUniqueProductCode(db, { generate: () => sequence.shift()! });
+    expect(code).toBe('2066666666');
+    expect(sequence).toHaveLength(0); // it skipped all three taken values first
+
+    // codes listed in `avoid` (e.g. barcodes in a CSV being imported) are skipped too
+    const seq2 = ['2077777777', '2088888888'];
+    const code2 = await generateUniqueProductCode(db, { avoid: new Set(['2077777777']), generate: () => seq2.shift()! });
+    expect(code2).toBe('2088888888');
   });
 
   it('generates random internal barcodes in the 20xxxxxxxx format', () => {
@@ -504,5 +589,428 @@ describe('POS System Hardening & Core Transactions (pos_test)', () => {
       .from(products)
       .where(eq(products.id, seed.product1Id));
     expect(updatedProduct.stockQty).toBe(8); // 10 - 2 = 8
+  });
+
+  // ---------------------------------------------------------------------------
+  // Deleting sales (owner only)
+  // ---------------------------------------------------------------------------
+  describe('deleting sales', () => {
+    async function makeSale(productId: number, quantity: number) {
+      const res = await executeCompleteSale(
+        {
+          items: [{ productId, quantity }],
+          paymentMethod: 'cash',
+          amountTendered: '100000.00',
+          discountType: 'none',
+          discountValue: '0',
+        },
+        TEST_CASHIER,
+      );
+      expect(res.success).toBe(true);
+      return res.data!;
+    }
+
+    const stockOf = async (productId: number) =>
+      (await db.select().from(products).where(eq(products.id, productId)))[0].stockQty;
+
+    it('deleting a completed sale puts the items back into stock and removes the sale and its history', async () => {
+      const sale = await makeSale(seed.product1Id, 3);
+      expect(await stockOf(seed.product1Id)).toBe(7);
+
+      const res = await executeDeleteSale(
+        { saleId: sale.saleId, confirmReceipt: sale.receiptNumber },
+        TEST_OWNER,
+      );
+      expect(res.success).toBe(true);
+      expect(res.data).toMatchObject({ saleId: sale.saleId, receiptNumber: sale.receiptNumber, stockRestored: true });
+
+      expect(await stockOf(seed.product1Id)).toBe(10); // 7 + 3 back
+
+      expect(await db.select().from(sales).where(eq(sales.id, sale.saleId))).toHaveLength(0);
+      expect(await db.select().from(saleItems).where(eq(saleItems.saleId, sale.saleId))).toHaveLength(0);
+      expect(await db.select().from(stockMovements).where(eq(stockMovements.saleId, sale.saleId))).toHaveLength(0);
+    });
+
+    it('deleting a voided sale leaves stock alone (the void already returned it) and removes all its lines', async () => {
+      const sale = await makeSale(seed.product1Id, 4);
+      const voided = await executeVoidSale({ saleId: sale.saleId, reason: 'Customer cancelled' }, TEST_OWNER);
+      expect(voided.success).toBe(true);
+      expect(await stockOf(seed.product1Id)).toBe(10);
+
+      const res = await executeDeleteSale(
+        { saleId: sale.saleId, confirmReceipt: sale.receiptNumber },
+        TEST_OWNER,
+      );
+      expect(res.success).toBe(true);
+      expect(res.data?.stockRestored).toBe(false);
+
+      expect(await stockOf(seed.product1Id)).toBe(10); // not 14
+      expect(await db.select().from(sales).where(eq(sales.id, sale.saleId))).toHaveLength(0);
+      // both the 'sale' and the 'void' movement are gone
+      expect(await db.select().from(stockMovements).where(eq(stockMovements.saleId, sale.saleId))).toHaveLength(0);
+    });
+
+    it('only deletes the chosen sale and keeps other history', async () => {
+      const first = await makeSale(seed.product1Id, 2);
+      const second = await makeSale(seed.product1Id, 1);
+      expect(await stockOf(seed.product1Id)).toBe(7);
+
+      const res = await executeDeleteSale(
+        { saleId: first.saleId, confirmReceipt: first.receiptNumber },
+        TEST_OWNER,
+      );
+      expect(res.success).toBe(true);
+
+      expect(await stockOf(seed.product1Id)).toBe(9); // only the 2 from the first sale came back
+      expect(await db.select().from(sales).where(eq(sales.id, second.saleId))).toHaveLength(1);
+      expect(await db.select().from(saleItems).where(eq(saleItems.saleId, second.saleId))).toHaveLength(1);
+      expect(await db.select().from(stockMovements).where(eq(stockMovements.saleId, second.saleId))).toHaveLength(1);
+    });
+
+    it('refuses when the typed receipt number does not match, and changes nothing', async () => {
+      const sale = await makeSale(seed.product1Id, 2);
+
+      const res = await executeDeleteSale(
+        { saleId: sale.saleId, confirmReceipt: 'INV-0000-999999' },
+        TEST_OWNER,
+      );
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('does not match');
+
+      expect(await stockOf(seed.product1Id)).toBe(8);
+      expect(await db.select().from(sales).where(eq(sales.id, sale.saleId))).toHaveLength(1);
+      expect(await db.select().from(stockMovements).where(eq(stockMovements.saleId, sale.saleId))).toHaveLength(1);
+    });
+
+    it('accepts the receipt number typed in lower case or with spaces around it', async () => {
+      const sale = await makeSale(seed.product1Id, 1);
+      const res = await executeDeleteSale(
+        { saleId: sale.saleId, confirmReceipt: `  ${sale.receiptNumber.toLowerCase()} ` },
+        TEST_OWNER,
+      );
+      expect(res.success).toBe(true);
+    });
+
+    it('does not let a cashier delete a sale', async () => {
+      const sale = await makeSale(seed.product1Id, 2);
+
+      const res = await executeDeleteSale(
+        { saleId: sale.saleId, confirmReceipt: sale.receiptNumber },
+        TEST_CASHIER,
+      );
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('Forbidden');
+
+      expect(await stockOf(seed.product1Id)).toBe(8);
+      expect(await db.select().from(sales).where(eq(sales.id, sale.saleId))).toHaveLength(1);
+    });
+
+    it('reports a sale that does not exist, and rejects bad input', async () => {
+      const missing = await executeDeleteSale({ saleId: 987654, confirmReceipt: 'INV-1' }, TEST_OWNER);
+      expect(missing.success).toBe(false);
+      expect(missing.error).toContain('not found');
+
+      const bad = await executeDeleteSale({ saleId: 0, confirmReceipt: '' }, TEST_OWNER);
+      expect(bad.success).toBe(false);
+    });
+
+    it('cannot delete the same sale twice or restore stock twice', async () => {
+      const sale = await makeSale(seed.product1Id, 5);
+      const input = { saleId: sale.saleId, confirmReceipt: sale.receiptNumber };
+
+      const [a, b] = await Promise.all([
+        executeDeleteSale(input, TEST_OWNER),
+        executeDeleteSale(input, TEST_OWNER),
+      ]);
+      expect([a.success, b.success].filter(Boolean)).toHaveLength(1); // exactly one wins
+      expect(await stockOf(seed.product1Id)).toBe(10); // restored once, not twice
+    });
+
+    it('keeps stock movements that are not tied to the deleted sale', async () => {
+      const sale = await makeSale(seed.product1Id, 1);
+      // A delivery received after the sale: stock +5 with its own history line (not tied to any sale)
+      await db.update(products).set({ stockQty: sql`${products.stockQty} + 5` }).where(eq(products.id, seed.product1Id));
+      await db.insert(stockMovements).values({
+        productId: seed.product1Id,
+        changeQty: 5,
+        qtyAfter: 14,
+        reason: 'received',
+        note: 'New delivery',
+        createdBy: TEST_OWNER.id,
+      });
+      const before = (await db.select().from(stockMovements).where(eq(stockMovements.productId, seed.product1Id))).length;
+
+      const res = await executeDeleteSale(
+        { saleId: sale.saleId, confirmReceipt: sale.receiptNumber },
+        TEST_OWNER,
+      );
+      expect(res.success).toBe(true);
+
+      const after = await db.select().from(stockMovements).where(eq(stockMovements.productId, seed.product1Id));
+      expect(after).toHaveLength(before - 1); // only the sale's own movement went
+      expect(after.some((m) => m.reason === 'received')).toBe(true);
+      expect(await stockOf(seed.product1Id)).toBe(15); // 10 - 1 + 5 + 1 back
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Product CSV import / export (owner only)
+  // ---------------------------------------------------------------------------
+  describe('product CSV import and export', () => {
+    const HEADER =
+      'sku,name,part_number,category,brand,description,unit,bin_location,cost_price,selling_price,stock,reorder_level,active,alternate_part_numbers,manufacturer_barcodes';
+    const csv = (...rows: string[]) => [HEADER, ...rows].join('\n');
+    const count = async (table: typeof products | typeof categories | typeof brands | typeof stockMovements) =>
+      (await db.select().from(table)).length;
+    const productBySku = async (sku: string) =>
+      (await db.select().from(products).where(eq(products.sku, sku)))[0];
+    const productByName = async (name: string) =>
+      (await db.select().from(products).where(eq(products.name, name)))[0];
+
+    it('previews what would happen without writing anything', async () => {
+      const before = await count(products);
+      const preview = await previewProductImport(
+        csv(
+          ',Tyre 185/65R15,TY-185,Tyres,Michelin,,pcs,B-1,12000,15000,8,2,yes,,', // empty SKU = new product
+          'TEST-PAD-01,Standard Brake Pads,04465-TEST1,Brakes,,,,,3000,5500,,,,,', // price changed
+          'TEST-PAD-02,Last Unit Brake Pad,04465-TEST2,Brakes,,,,,4000,7000,,,,,', // identical
+          ',Broken,PN,Brakes,,,,,abc,100,,,,,', // bad price
+          'NOPE-999,Unknown SKU,PN-9,Brakes,,,,,1,2,,,,,', // SKU that does not exist
+        ),
+      );
+      expect(preview.fileErrors).toEqual([]);
+      expect(preview.counts).toEqual({ create: 1, update: 1, unchanged: 1, error: 2 });
+      expect(preview.newCategories).toEqual(['Tyres']);
+      expect(preview.newBrands).toEqual(['Michelin']);
+      const byName = Object.fromEntries(preview.rows.map((r) => [r.name, r]));
+      expect(byName['Tyre 185/65R15'].action).toBe('create');
+      expect(byName['Standard Brake Pads'].action).toBe('update');
+      expect(byName['Standard Brake Pads'].changes.join(' ')).toContain('selling price: 5000.00 -> 5500.00');
+      expect(byName['Last Unit Brake Pad'].action).toBe('unchanged');
+      expect(byName['Broken'].action).toBe('error');
+      expect(byName['Unknown SKU'].errors.join(' ')).toContain('No product has this SKU');
+
+      // nothing was written
+      expect(await count(products)).toBe(before);
+      expect((await productBySku('TEST-PAD-01')).price).toBe('5000.00');
+      expect(await count(categories)).toBe(1);
+      expect(await count(brands)).toBe(0);
+    });
+
+    it('creates new products with a generated SKU (also the barcode), opening stock, alternates and new category/brand', async () => {
+      const result = await commitProductImport(
+        csv(',Tyre 185/65R15,TY-185,Tyres,Michelin,Summer tyre,,B-1,12000,15000,7,2,,"oem:TY-OEM-1;ALT-185",4900000000017'),
+        TEST_OWNER.id,
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.summary).toMatchObject({ created: 1, updated: 0, categoriesCreated: 1, brandsCreated: 1 });
+
+      const created = await productByName('Tyre 185/65R15');
+      expect(created).toMatchObject({
+        partNumber: 'TY-185',
+        unit: 'pcs', // default when the cell is blank
+        binLocation: 'B-1',
+        costPrice: '12000.00',
+        price: '15000.00',
+        stockQty: 7,
+        reorderLevel: 2,
+        isActive: true, // default when blank
+      });
+      expect(created.sku).toMatch(/^20\d{8}$/); // generated
+      expect((await db.select().from(categories).where(eq(categories.id, created.categoryId)))[0].name).toBe('Tyres');
+      expect((await db.select().from(brands).where(eq(brands.id, created.brandId!)))[0].name).toBe('Michelin');
+
+      // stock history: one 'opening' movement for the imported quantity
+      const movements = await db.select().from(stockMovements).where(eq(stockMovements.productId, created.id));
+      expect(movements).toHaveLength(1);
+      expect(movements[0]).toMatchObject({ reason: 'opening', changeQty: 7, qtyAfter: 7, createdBy: TEST_OWNER.id, note: 'Imported from CSV' });
+
+      // barcodes: the SKU is the internal barcode, plus the manufacturer one
+      const barcodes = await db.select().from(productBarcodes).where(eq(productBarcodes.productId, created.id));
+      expect(barcodes.find((b) => b.kind === 'internal')!.code).toBe(created.sku);
+      expect(barcodes.find((b) => b.kind === 'manufacturer')!.code).toBe('4900000000017');
+
+      const alternates = await db.select().from(productPartNumbers).where(eq(productPartNumbers.productId, created.id));
+      expect(alternates.map((a) => `${a.kind}:${a.partNumber}`).sort()).toEqual(['alternate:ALT-185', 'oem:TY-OEM-1']);
+    });
+
+    it('gives every imported new product its own unique SKU', async () => {
+      const rows = Array.from({ length: 25 }, (_, i) => `,Imported ${i},IMP-${i},Brakes,,,,,1,2,,,,,`);
+      const result = await commitProductImport(csv(...rows), TEST_OWNER.id);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.summary.created).toBe(25);
+
+      const skus = (await db.select({ sku: products.sku }).from(products)).map((r) => r.sku);
+      expect(new Set(skus.map((s) => s.toLowerCase())).size).toBe(skus.length);
+      const codes = (await db.select({ code: productBarcodes.code }).from(productBarcodes)).map((r) => r.code);
+      expect(new Set(codes.map((c) => c.toLowerCase())).size).toBe(codes.length);
+    });
+
+    it('accepts a file that has no SKU column at all: every row is a new product', async () => {
+      const result = await commitProductImport(
+        'name,part_number,category,cost_price,selling_price\nNo Sku Column,PN-N,Brakes,10,20\n',
+        TEST_OWNER.id,
+      );
+      expect(result.ok).toBe(true);
+      expect((await productByName('No Sku Column')).sku).toMatch(/^20\d{8}$/);
+    });
+
+    it('warns when a new row has the part number of an existing product (e.g. a file imported twice)', async () => {
+      const preview = await previewProductImport(csv(',Standard Brake Pads,04465-TEST1,Brakes,,,,,3000,5000,,,,,'));
+      expect(preview.counts.create).toBe(1);
+      expect(preview.rows[0].warnings.join(' ')).toContain('already exists (SKU TEST-PAD-01)');
+    });
+
+    it('does not write an opening movement when the imported stock is 0 or blank', async () => {
+      await commitProductImport(csv(',No stock,PN-Z,Brakes,,,,,1,2,0,,,,', ',Blank stock,PN-Z2,Brakes,,,,,1,2,,,,,'), TEST_OWNER.id);
+      for (const name of ['No stock', 'Blank stock']) {
+        const p = await productByName(name);
+        expect(p.stockQty).toBe(0);
+        expect(await db.select().from(stockMovements).where(eq(stockMovements.productId, p.id))).toHaveLength(0);
+      }
+    });
+
+    it('updates existing products by SKU, never changes their SKU or stock', async () => {
+      const before = await productBySku('TEST-PAD-01');
+      const movementsBefore = await count(stockMovements);
+
+      const result = await commitProductImport(
+        // lower-case SKU still matches; stock column says 99 and must be ignored
+        csv('test-pad-01,Premium Brake Pads,04465-NEW,brakes,Bosch,New description,pair,C-9,3500,6200,99,4,no,"oem:OEM-9;ALT-9",4911111111116'),
+        TEST_OWNER.id,
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.summary).toMatchObject({ created: 0, updated: 1, brandsCreated: 1, categoriesCreated: 0 });
+
+      const after = await productBySku('TEST-PAD-01');
+      expect(after).toMatchObject({
+        id: before.id,
+        sku: 'TEST-PAD-01', // keeps its original SKU and spelling
+        name: 'Premium Brake Pads',
+        partNumber: '04465-NEW',
+        unit: 'pair',
+        binLocation: 'C-9',
+        description: 'New description',
+        costPrice: '3500.00',
+        price: '6200.00',
+        reorderLevel: 4,
+        isActive: false,
+        stockQty: before.stockQty, // untouched
+      });
+      expect(await count(stockMovements)).toBe(movementsBefore); // no stock history written
+      expect(await count(categories)).toBe(1); // 'brakes' matched 'Brakes'
+
+      const alternates = await db.select().from(productPartNumbers).where(eq(productPartNumbers.productId, before.id));
+      expect(alternates.map((a) => `${a.kind}:${a.partNumber}`).sort()).toEqual(['alternate:ALT-9', 'oem:OEM-9']);
+      const barcodes = await db.select().from(productBarcodes).where(eq(productBarcodes.productId, before.id));
+      expect(barcodes.filter((b) => b.kind === 'manufacturer').map((b) => b.code)).toEqual(['4911111111116']);
+      expect(barcodes.filter((b) => b.kind === 'internal')).toHaveLength(1); // internal code untouched
+    });
+
+    it('leaves values alone when optional cells are blank, replaces alternates, and only ever adds barcodes', async () => {
+      await commitProductImport(
+        csv('TEST-PAD-01,Standard Brake Pads,04465-TEST1,Brakes,Bosch,Keep me,set,A-1,3000,5000,,5,,"OEM-1;OEM-2",4911111111116'),
+        TEST_OWNER.id,
+      );
+      const second = await commitProductImport(
+        // brand/description/unit/bin/reorder/active blank; alternates replaced; barcodes cell lists a different code
+        csv('TEST-PAD-01,Standard Brake Pads,04465-TEST1,Brakes,,,,,3000,5100,,,,OEM-3,4922222222223'),
+        TEST_OWNER.id,
+      );
+      expect(second.ok).toBe(true);
+
+      const p = await productBySku('TEST-PAD-01');
+      expect(p).toMatchObject({ description: 'Keep me', unit: 'set', binLocation: 'A-1', reorderLevel: 5, isActive: true, price: '5100.00' });
+      expect(p.brandId).not.toBeNull(); // brand kept
+      const alternates = await db.select().from(productPartNumbers).where(eq(productPartNumbers.productId, p.id));
+      expect(alternates.map((a) => a.partNumber)).toEqual(['OEM-3']);
+      const manufacturer = (await db.select().from(productBarcodes).where(eq(productBarcodes.productId, p.id)))
+        .filter((b) => b.kind === 'manufacturer')
+        .map((b) => b.code)
+        .sort();
+      expect(manufacturer).toEqual(['4911111111116', '4922222222223']); // old one kept, new one added
+    });
+
+    it('imports nothing when any row has an error, unless invalid rows are skipped', async () => {
+      const file = csv(',Good,PN-G,Brakes,,,,,1,2,3,,,,', ',Bad,PN-B,Brakes,,,,,oops,2,,,,,');
+      const before = await count(products);
+
+      const blocked = await commitProductImport(file, TEST_OWNER.id);
+      expect(blocked.ok).toBe(false);
+      if (!blocked.ok) {
+        expect(blocked.error).toContain('1 row has errors');
+        expect(blocked.preview.counts.error).toBe(1);
+      }
+      expect(await count(products)).toBe(before); // nothing saved
+
+      const skipped = await commitProductImport(file, TEST_OWNER.id, { skipInvalid: true });
+      expect(skipped.ok).toBe(true);
+      if (skipped.ok) expect(skipped.summary).toMatchObject({ created: 1, skipped: 1 });
+      expect(await productByName('Good')).toBeDefined();
+      expect(await productByName('Bad')).toBeUndefined();
+    });
+
+    it('does not create categories or brands for rows that fail', async () => {
+      await commitProductImport(
+        csv(',Bad,PN-B,Mystery Category,Mystery Brand,,,,oops,2,,,,,'),
+        TEST_OWNER.id,
+        { skipInvalid: true },
+      );
+      expect(await count(categories)).toBe(1);
+      expect(await count(brands)).toBe(0);
+    });
+
+    it('refuses a barcode that belongs to another product, or is used twice in the file', async () => {
+      await commitProductImport(csv('TEST-PAD-02,Last Unit Brake Pad,04465-TEST2,Brakes,,,,,4000,7000,,,,,4933333333330'), TEST_OWNER.id);
+
+      const preview = await previewProductImport(
+        csv(
+          'TEST-PAD-01,Standard Brake Pads,04465-TEST1,Brakes,,,,,3000,5000,,,,,4933333333330', // belongs to PAD-02
+          ',New one,PN-1,Brakes,,,,,1,2,,,,,4944444444447',
+          ',Another,PN-2,Brakes,,,,,1,2,,,,,4944444444447', // same code as the row above
+        ),
+      );
+      const byName = Object.fromEntries(preview.rows.map((r) => [r.name, r]));
+      expect(byName['Standard Brake Pads'].errors.join(' ')).toContain('already belongs to another product (TEST-PAD-02)');
+      expect(byName['New one'].errors).toEqual([]);
+      expect(byName['Another'].errors.join(' ')).toContain('also used on row 3');
+    });
+
+    it('rejects a file with missing columns before touching anything', async () => {
+      const before = await count(products);
+      const result = await commitProductImport('sku,name\nA-1,Thing\n', TEST_OWNER.id);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toContain('Missing required columns');
+      expect(await count(products)).toBe(before);
+    });
+
+    it('exports every product with cost prices, alternates and barcodes, and reads back as "no change"', async () => {
+      await commitProductImport(
+        csv(
+          ',"Pad, front ""deluxe""",PN-1,Brakes,Bosch,"Line one\nLine two",set,A-1,1500.5,2500,5,2,yes,"oem:OEM-1;ALT-1","4955555555554;4966666666661"',
+          ',=Formula name,PN-2,Brakes,,,,,10,20,,,no,,',
+        ),
+        TEST_OWNER.id,
+      );
+
+      const exported = await exportProductsCsv();
+      expect(exported.charCodeAt(0)).toBe(0xfeff); // BOM for Excel
+      expect(exported).toContain('sku,name,part_number,category,brand,description,unit,bin_location,cost_price,selling_price,stock,reorder_level,active,alternate_part_numbers,manufacturer_barcodes,internal_barcode');
+      expect(exported).toContain('TEST-PAD-01');
+      expect(exported).toContain('1500.50');
+      expect(exported).toContain('oem:OEM-1;ALT-1');
+      expect(exported).toContain('4955555555554;4966666666661');
+      expect(exported).toContain("'=Formula name"); // formula-looking text is neutralised for Excel
+
+      // Importing the export again changes nothing: every row has its SKU, so it is "no change"
+      const preview = await previewProductImport(exported);
+      expect(preview.fileErrors).toEqual([]);
+      expect(preview.counts.error).toBe(0);
+      expect(preview.counts.create).toBe(0);
+      expect(preview.counts.update).toBe(0);
+      expect(preview.counts.unchanged).toBe(await count(products));
+    });
   });
 });

@@ -193,7 +193,7 @@ export function SettingsForm({ initialData }: SettingsFormProps) {
             Receipt Layout & Policy Footer
           </CardTitle>
           <CardDescription className="text-xs">
-            Customize the message printed at the bottom of 80mm thermal receipts.
+            The short message printed at the bottom of invoices and receipts. Leave it empty to print no message.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -210,7 +210,7 @@ export function SettingsForm({ initialData }: SettingsFormProps) {
               rows={3}
               value={receiptFooter}
               onChange={(e) => setReceiptFooter(e.target.value)}
-              placeholder="Thank you for your purchase! Electrical parts are non-refundable. Other parts can be exchanged within 7 days with this bill."
+              placeholder="Thank you for your business!"
               className="focus-visible:ring-2 focus-visible:ring-ring text-xs"
               disabled={isSaving}
             />

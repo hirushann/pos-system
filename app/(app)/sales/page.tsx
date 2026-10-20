@@ -80,6 +80,7 @@ export default async function SalesPage({
         totalPages={paginated.totalPages}
         currentPage={paginated.currentPage}
         pageSize={paginated.pageSize}
+        isOwner={isOwner}
       />
     </div>
   );

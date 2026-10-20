@@ -646,6 +646,140 @@ export async function executeVoidSale(
   }
 }
 
+// ============================================================================
+// Delete Sale Server Action (Owner Only)
+// ============================================================================
+
+const deleteSaleInputSchema = z.object({
+  saleId: z.number().int().positive('Please specify a valid sale ID'),
+  confirmReceipt: z.string().trim().min(1, 'Type the receipt number to confirm the deletion'),
+});
+
+export type DeleteSaleInput = z.infer<typeof deleteSaleInputSchema>;
+
+export interface DeleteSaleResultData {
+  saleId: number;
+  receiptNumber: string;
+  /** True when the sold items were put back into stock (completed sales). */
+  stockRestored: boolean;
+}
+
+export async function deleteSale(
+  rawInput: DeleteSaleInput,
+): Promise<ServerActionResult<DeleteSaleResultData>> {
+  const { user: currentUser } = await requireUser();
+  assertOwner(currentUser);
+
+  return executeDeleteSale(rawInput, currentUser);
+}
+
+/**
+ * Permanently deletes a sale, its line items and its stock history lines.
+ * - Completed sale: the sold quantities go back into stock first.
+ * - Voided sale: stock was already returned by the void, so stock is not touched.
+ * Receipt numbers are not reused, so the invoice sequence keeps a gap.
+ */
+export async function executeDeleteSale(
+  rawInput: DeleteSaleInput,
+  currentUser: { id: string; role?: string | null },
+): Promise<ServerActionResult<DeleteSaleResultData>> {
+  if (currentUser.role !== 'owner') {
+    return {
+      success: false,
+      error: 'Forbidden: Only owners are authorized to delete sales.',
+    };
+  }
+
+  const parsed = deleteSaleInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message || 'Invalid delete input',
+    };
+  }
+
+  const input = parsed.data;
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      // 1. Lock the sale row
+      const [lockedSale] = await tx
+        .select()
+        .from(sales)
+        .where(eq(sales.id, input.saleId))
+        .for('update');
+
+      if (!lockedSale) {
+        throw new Error('Sale not found.');
+      }
+
+      // 2. The owner must type the receipt number: guards against deleting the wrong sale
+      if (lockedSale.receiptNumber.toLowerCase() !== input.confirmReceipt.toLowerCase()) {
+        throw new Error('The receipt number you typed does not match this sale. Nothing was deleted.');
+      }
+
+      const items = await tx
+        .select()
+        .from(saleItems)
+        .where(eq(saleItems.saleId, lockedSale.id));
+
+      // 3. A completed sale still holds stock: put it back (products locked in id order)
+      const stockRestored = lockedSale.status !== 'voided';
+      if (stockRestored && items.length > 0) {
+        const productIds = [...new Set(items.map((i) => i.productId))].sort((a, b) => a - b);
+        await tx
+          .select({ id: products.id })
+          .from(products)
+          .where(inArray(products.id, productIds))
+          .orderBy(asc(products.id))
+          .for('update');
+
+        for (const item of items) {
+          await tx
+            .update(products)
+            .set({ stockQty: sql`${products.stockQty} + ${item.quantity}` })
+            .where(eq(products.id, item.productId));
+        }
+      }
+
+      // 4. Remove the sale's stock history, then the sale (its items go with it)
+      await tx.delete(stockMovements).where(eq(stockMovements.saleId, lockedSale.id));
+      await tx.delete(sales).where(eq(sales.id, lockedSale.id));
+
+      return {
+        saleId: lockedSale.id,
+        receiptNumber: lockedSale.receiptNumber,
+        stockRestored,
+      };
+    });
+
+    try {
+      revalidatePath('/');
+      revalidatePath('/sales');
+      revalidatePath('/inventory');
+      revalidatePath('/products');
+      revalidatePath('/checkout');
+      revalidatePath('/reports');
+    } catch {
+      // Ignored outside Next.js request scope
+    }
+
+    return { success: true, data: result };
+  } catch (err: unknown) {
+    if (getDbErrorKind(err) === 'foreign_key') {
+      return {
+        success: false,
+        error: 'This sale cannot be deleted because other records still refer to it.',
+      };
+    }
+    const error = err as { message?: string };
+    return {
+      success: false,
+      error: error.message || 'Failed to delete sale.',
+    };
+  }
+}
+
 const lookupBarcodeInputSchema = z.object({
   code: z.string().trim().min(1, 'Barcode code cannot be empty'),
 });

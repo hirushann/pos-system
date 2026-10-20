@@ -3,7 +3,8 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertTriangle, Calendar as CalendarIcon, ArrowRight, Clock } from 'lucide-react';
+import { AlertTriangle, Calendar as CalendarIcon, ArrowRight, Clock, FileDown, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { getColomboDateString } from '@/src/lib/dates';
@@ -67,6 +68,30 @@ export function ReportsHeader({
     router.push(`/reports?${params.toString()}`);
   };
 
+  const [exporting, setExporting] = React.useState(false);
+
+  // Exports the range currently shown on the page (the default last 30 days if none was chosen)
+  const handleExportPdf = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ startDate: currentStartDate, endDate: currentEndDate });
+      const res = await fetch(`/api/reports/pdf?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const url = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `report_${currentStartDate}_to_${currentEndDate}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Could not create the PDF. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const isToday = currentStartDate === todayStr && currentEndDate === todayStr;
 
   return (
@@ -83,6 +108,7 @@ export function ReportsHeader({
           </p>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2.5">
         {/* Low Stock count banner */}
         {lowStockCount > 0 && (
           <Link
@@ -97,6 +123,16 @@ export function ReportsHeader({
             <ArrowRight className="h-3.5 w-3.5 ml-1 text-amber-600 dark:text-amber-400" />
           </Link>
         )}
+        <Button
+          onClick={handleExportPdf}
+          disabled={exporting}
+          size="sm"
+          className="h-9 gap-2 rounded-xl bg-gradient-to-b from-blue-600 to-blue-700 px-4 text-sm font-semibold text-white shadow-sm shadow-blue-600/25 transition-all hover:from-blue-500 hover:to-blue-700 hover:shadow-md disabled:opacity-70"
+        >
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+          {exporting ? 'Creating PDF...' : 'Export PDF'}
+        </Button>
+        </div>
       </div>
 
       {/* Date Range Selector Bar */}

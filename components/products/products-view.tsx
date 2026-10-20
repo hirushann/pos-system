@@ -7,12 +7,13 @@ import { ProductFilters } from './product-filters';
 import { ProductTable } from './product-table';
 import { ProductFormDialog } from './product-form-dialog';
 import { DeleteProductDialog } from './delete-product-dialog';
+import { ProductImportDialog } from './product-import-dialog';
 import { MetadataDialogs } from './metadata-dialogs';
 import {
   PaginatedProductsResult,
   ProductListItem,
 } from '@/src/data/products';
-import { Plus, Tags } from 'lucide-react';
+import { Download, FileSpreadsheet, Plus, Tags } from 'lucide-react';
 
 interface CategoryItem {
   id: number;
@@ -62,6 +63,7 @@ export function ProductsView({
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [deletingProduct, setDeletingProduct] = React.useState<ProductListItem | null>(null);
 
+  const [importOpen, setImportOpen] = React.useState(false);
   const [metadataOpen, setMetadataOpen] = React.useState(false);
   const [metadataTab, setMetadataTab] = React.useState<'category' | 'brand' | 'make' | 'model'>('category');
 
@@ -102,7 +104,19 @@ export function ProductsView({
 
         {/* Owner Controls */}
         {isOwner && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href="/api/products/export" download>
+                <Download className="h-4 w-4" />
+                <span>Export CSV</span>
+              </a>
+            </Button>
+
+            <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="gap-1.5">
+              <FileSpreadsheet className="h-4 w-4" />
+              <span>Import CSV</span>
+            </Button>
+
             <Button
               variant="outline"
               size="sm"
@@ -154,6 +168,11 @@ export function ProductsView({
           onOpenMetadata={handleOpenMetadata}
           onSuccess={handleRefresh}
         />
+      )}
+
+      {/* Import products from CSV (Owner Only) */}
+      {isOwner && (
+        <ProductImportDialog open={importOpen} onOpenChange={setImportOpen} onImported={handleRefresh} />
       )}
 
       {/* Delete / Deactivate Dialog (Owner Only) */}

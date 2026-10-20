@@ -1,6 +1,6 @@
 import { eq, and } from 'drizzle-orm';
 import { db } from '@/src/db';
-import { productBarcodes } from '@/src/db/schema';
+import { productBarcodes, products } from '@/src/db/schema';
 import { generateInternalBarcode } from '@/src/lib/barcode';
 import { getDbErrorKind } from '@/src/lib/db-errors';
 
@@ -64,5 +64,42 @@ export async function getOrCreateInternalBarcode(productId: number): Promise<str
       .limit(1);
     if (created) return created.code;
     throw err;
+  }
+}
+
+/**
+ * True when an insert failed because the generated SKU / barcode was taken in the meantime
+ * (two products being created at the same moment). The caller just generates another one.
+ */
+export function isSkuOrCodeCollision(err: unknown): boolean {
+  if (getDbErrorKind(err) !== 'unique') return false;
+  const e = err as DriverError;
+  const text = `${e.sqlMessage ?? ''} ${e.cause?.sqlMessage ?? ''} ${e.message ?? ''}`;
+  return text.includes('sku_unique') || text.includes('code_unique');
+}
+
+/**
+ * A new product's SKU. It is ALSO the product's barcode, so it must not clash with any
+ * existing SKU or any existing barcode (internal or manufacturer). Format: '20' + 8 digits.
+ * `avoid` holds extra codes to stay clear of (e.g. barcodes listed in a CSV being imported).
+ */
+export async function generateUniqueProductCode(
+  executor: Pick<typeof db, 'select'>,
+  options: { avoid?: Set<string>; generate?: () => string } = {},
+): Promise<string> {
+  const { avoid, generate = generateInternalBarcode } = options;
+  for (let attempt = 1; ; attempt++) {
+    const code = generate();
+    const avoided = avoid?.has(code.toLowerCase()) ?? false;
+    if (!avoided) {
+      const [skuTaken] = await executor.select({ id: products.id }).from(products).where(eq(products.sku, code)).limit(1);
+      const [codeTaken] = await executor
+        .select({ id: productBarcodes.id })
+        .from(productBarcodes)
+        .where(eq(productBarcodes.code, code))
+        .limit(1);
+      if (!skuTaken && !codeTaken) return code;
+    }
+    if (attempt >= MAX_ATTEMPTS) throw new Error('Could not generate a unique SKU. Please try again.');
   }
 }

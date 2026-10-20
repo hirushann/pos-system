@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { formatLKR } from '@/src/lib/money';
+import { computeCashPayment } from '@/src/lib/cash-payment';
 import Decimal from 'decimal.js';
 import { Banknote, CreditCard, Loader2, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
 
@@ -50,7 +51,7 @@ export function PaymentDialog({
     if (open) {
       const timer = setTimeout(() => {
         setMethod('cash');
-        setTenderedStr(total.toFixed(2));
+        setTenderedStr(''); // empty on purpose: the cashier types what the customer really handed over
         setValidationError(null);
         tenderedInputRef.current?.focus();
         tenderedInputRef.current?.select();
@@ -59,52 +60,18 @@ export function PaymentDialog({
     }
   }, [open, total]);
 
-  // Compute change due or short
+  // Balance to give back (or how much is still missing)
   const paymentState = React.useMemo(() => {
     if (method === 'card') {
       return {
+        status: 'ok' as const,
         isValid: true,
+        tendered: total,
         changeDue: new Decimal(0),
         shortAmount: new Decimal(0),
-        tenderedDec: total,
       };
     }
-
-    const raw = tenderedStr.trim();
-    if (!raw || isNaN(Number(raw))) {
-      return {
-        isValid: false,
-        changeDue: new Decimal(0),
-        shortAmount: total,
-        tenderedDec: new Decimal(0),
-      };
-    }
-
-    try {
-      const dec = new Decimal(raw);
-      if (dec.lessThan(total)) {
-        return {
-          isValid: false,
-          changeDue: new Decimal(0),
-          shortAmount: total.minus(dec),
-          tenderedDec: dec,
-        };
-      }
-
-      return {
-        isValid: true,
-        changeDue: dec.minus(total),
-        shortAmount: new Decimal(0),
-        tenderedDec: dec,
-      };
-    } catch {
-      return {
-        isValid: false,
-        changeDue: new Decimal(0),
-        shortAmount: total,
-        tenderedDec: new Decimal(0),
-      };
-    }
+    return computeCashPayment(tenderedStr, total);
   }, [method, tenderedStr, total]);
 
   // Quick tender helpers
@@ -133,14 +100,19 @@ export function PaymentDialog({
     if (method === 'cash') {
       if (!paymentState.isValid) {
         setValidationError(
-          `Amount tendered must be at least ${formatLKR(total)}. Short by ${formatLKR(paymentState.shortAmount)}.`,
+          paymentState.status === 'empty'
+            ? 'Enter the cash given by the customer first.'
+            : paymentState.status === 'invalid'
+              ? 'Enter a valid amount, for example 5000 or 5000.50.'
+              : `Amount tendered must be at least ${formatLKR(total)}. Short by ${formatLKR(paymentState.shortAmount)}.`,
         );
+        tenderedInputRef.current?.focus();
         return;
       }
 
       await onConfirmSale({
         method: 'cash',
-        amountTendered: paymentState.tenderedDec.toFixed(2),
+        amountTendered: paymentState.tendered.toFixed(2),
       });
     } else {
       await onConfirmSale({
@@ -227,16 +199,16 @@ export function PaymentDialog({
             <div className="space-y-3.5">
               <div className="space-y-1.5">
                 <Label htmlFor="tendered-input" className="text-xs font-semibold text-muted-foreground">
-                  Amount Tendered (Rs.)
+                  Cash Given by Customer (Rs.)
                 </Label>
                 <div className="relative">
                   <Input
                     ref={tenderedInputRef}
                     id="tendered-input"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder={total.toFixed(2)}
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    placeholder="Enter cash given"
                     value={tenderedStr}
                     onChange={(e) => {
                       setTenderedStr(e.target.value);
@@ -290,22 +262,34 @@ export function PaymentDialog({
                 </Button>
               </div>
 
-              {/* Change / Status Banner */}
-              {paymentState.isValid ? (
+              {/* Balance / Status Banner */}
+              {paymentState.status === 'ok' ? (
                 <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 flex items-center justify-between text-emerald-700 dark:text-emerald-400">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-5 w-5 shrink-0" />
-                    <span className="text-sm font-semibold">Change Due:</span>
+                    <span className="text-sm font-semibold">Balance to give back:</span>
                   </div>
-                  <span className="font-mono text-xl font-bold tabular-nums">
+                  <span className="font-mono text-2xl font-black tabular-nums">
                     {formatLKR(paymentState.changeDue)}
                   </span>
+                </div>
+              ) : paymentState.status === 'empty' ? (
+                <div className="rounded-lg bg-muted/50 border border-dashed p-3 flex items-center justify-between text-muted-foreground">
+                  <div className="flex items-center gap-2">
+                    <Banknote className="h-5 w-5 shrink-0" />
+                    <span className="text-sm font-medium">Enter the cash given to see the balance</span>
+                  </div>
+                </div>
+              ) : paymentState.status === 'invalid' ? (
+                <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 flex items-center gap-2 text-destructive">
+                  <AlertCircle className="h-5 w-5 shrink-0" />
+                  <span className="text-sm font-medium">Enter a valid amount, e.g. 5000 or 5000.50</span>
                 </div>
               ) : (
                 <div className="rounded-lg bg-destructive/10 border border-destructive/30 p-3 flex items-center justify-between text-destructive">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="h-5 w-5 shrink-0" />
-                    <span className="text-sm font-medium">Insufficient Tendered:</span>
+                    <span className="text-sm font-medium">Not enough cash:</span>
                   </div>
                   <span className="font-mono text-base font-bold tabular-nums">
                     Short by {formatLKR(paymentState.shortAmount)}

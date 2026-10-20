@@ -18,7 +18,11 @@ import { eq, and, sql, count } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getDbErrorKind, mapDatabaseError } from '@/src/lib/db-errors';
-import { insertInternalBarcode, getOrCreateInternalBarcode } from '@/src/lib/internal-barcode';
+import {
+  generateUniqueProductCode,
+  getOrCreateInternalBarcode,
+  isSkuOrCodeCollision,
+} from '@/src/lib/internal-barcode';
 
 const nameInputSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(100, 'Name cannot exceed 100 characters'),
@@ -48,7 +52,6 @@ const alternateNumberSchema = z.object({
 });
 
 const createProductSchema = z.object({
-  sku: z.string().trim().min(1, 'SKU is required'),
   name: z.string().trim().min(1, 'Product name is required'),
   partNumber: z.string().trim().min(1, 'Part number is required'),
   categoryId: z.number().int().positive('Category is required'),
@@ -66,7 +69,6 @@ const createProductSchema = z.object({
 });
 
 const updateProductSchema = z.object({
-  sku: z.string().trim().min(1, 'SKU is required'),
   name: z.string().trim().min(1, 'Product name is required'),
   partNumber: z.string().trim().min(1, 'Part number is required'),
   categoryId: z.number().int().positive('Category is required'),
@@ -93,6 +95,17 @@ interface ServerActionResult<T = unknown> {
   message?: string;
 }
 
+/** Runs `work` again with a fresh code if two products were created at the exact same moment. */
+async function retryOnCodeCollision<T>(work: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await work();
+    } catch (err) {
+      if (!isSkuOrCodeCollision(err) || attempt >= 5) throw err;
+    }
+  }
+}
+
 export async function createProduct(
   rawInput: CreateProductInput,
 ): Promise<ServerActionResult<{ id: number }>> {
@@ -117,30 +130,16 @@ export async function executeCreateProduct(
 
   const data = parsed.data;
 
-  // Pre-check for duplicate SKU to give precise friendly message with conflicting product name
-  const [existingSkuProduct] = await db
-    .select({ name: products.name })
-    .from(products)
-    .where(eq(products.sku, data.sku))
-    .limit(1);
-
-  if (existingSkuProduct) {
-    return {
-      success: false,
-      error: `This SKU is already used by ${existingSkuProduct.name}`,
-      fieldErrors: {
-        sku: `This SKU is already used by ${existingSkuProduct.name}`,
-      },
-    };
-  }
-
   try {
-    const newId = await db.transaction(async (tx) => {
-      // 1. Insert product
+    const newId = await retryOnCodeCollision(() => db.transaction(async (tx) => {
+      // 1. Generate a unique SKU. It is also the product's barcode.
+      const sku = await generateUniqueProductCode(tx);
+
+      // 2. Insert product
       const [inserted] = await tx
         .insert(products)
         .values({
-          sku: data.sku,
+          sku,
           name: data.name,
           partNumber: data.partNumber,
           categoryId: data.categoryId,
@@ -156,8 +155,8 @@ export async function executeCreateProduct(
         })
         .$returningId();
 
-      // 2. Give the product its internal barcode (random '20' + 8 digits)
-      await insertInternalBarcode(tx, inserted.id);
+      // 3. The SKU is the product's internal barcode
+      await tx.insert(productBarcodes).values({ productId: inserted.id, code: sku, kind: 'internal' });
 
       // 3. Insert opening stock movement if openingStock > 0
       if (data.openingStock > 0) {
@@ -213,7 +212,7 @@ export async function executeCreateProduct(
       }
 
       return inserted.id;
-    });
+    }));
 
     try {
       revalidatePath('/products');
@@ -225,15 +224,7 @@ export async function executeCreateProduct(
   } catch (err: unknown) {
     const dbErr = err as { message?: string };
     if (getDbErrorKind(err) === 'unique') {
-      const [existing] = await db
-        .select({ name: products.name })
-        .from(products)
-        .where(eq(products.sku, data.sku))
-        .limit(1);
-      const msg = existing
-        ? `This SKU is already used by ${existing.name}`
-        : 'A unique constraint was violated (duplicate SKU or part number)';
-      return { success: false, error: msg, fieldErrors: { sku: msg } };
+      return { success: false, error: 'Could not generate a unique SKU. Please try again.' };
     }
     if (getDbErrorKind(err) === 'check') {
       return { success: false, error: 'Database check constraint failed: please check your numbers (prices/stock cannot be negative).' };
@@ -264,30 +255,12 @@ export async function updateProduct(
 
   const data = parsed.data;
 
-  // Check for duplicate SKU excluding self
-  const [existingSkuProduct] = await db
-    .select({ id: products.id, name: products.name })
-    .from(products)
-    .where(eq(products.sku, data.sku))
-    .limit(1);
-
-  if (existingSkuProduct && existingSkuProduct.id !== id) {
-    return {
-      success: false,
-      error: `This SKU is already used by ${existingSkuProduct.name}`,
-      fieldErrors: {
-        sku: `This SKU is already used by ${existingSkuProduct.name}`,
-      },
-    };
-  }
-
   try {
     await db.transaction(async (tx) => {
       // 1. Update product base fields (stockQty is strictly untouched!)
       await tx
         .update(products)
         .set({
-          sku: data.sku,
           name: data.name,
           partNumber: data.partNumber,
           categoryId: data.categoryId,
@@ -352,15 +325,7 @@ export async function updateProduct(
   } catch (err: unknown) {
     const dbErr = err as { message?: string };
     if (getDbErrorKind(err) === 'unique') {
-      const [existing] = await db
-        .select({ name: products.name })
-        .from(products)
-        .where(eq(products.sku, data.sku))
-        .limit(1);
-      const msg = existing
-        ? `This SKU is already used by ${existing.name}`
-        : 'A unique constraint was violated';
-      return { success: false, error: msg, fieldErrors: { sku: msg } };
+      return { success: false, error: 'A unique constraint was violated.' };
     }
     if (getDbErrorKind(err) === 'check') {
       return { success: false, error: 'Database check constraint failed: values must be valid.' };

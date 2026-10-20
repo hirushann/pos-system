@@ -18,6 +18,7 @@ interface SaleSuccessDialogProps {
     saleId: number;
     receiptNumber: string;
     total: string;
+    amountTendered?: string | null;
     changeGiven: string | null;
     paymentMethod: 'cash' | 'card';
   } | null;
@@ -81,14 +82,23 @@ export function SaleSuccessDialog({
           </div>
 
           <div className="flex justify-between items-center text-sm text-muted-foreground">
-            <span>Total Paid:</span>
+            <span>Bill Total:</span>
             <span className="font-mono text-base font-bold text-foreground tabular-nums">
               {formatLKR(saleData.total)}
             </span>
           </div>
 
+          {saleData.paymentMethod === 'cash' && saleData.amountTendered && (
+            <div className="flex justify-between items-center text-sm text-muted-foreground">
+              <span>Cash Given:</span>
+              <span className="font-mono text-base font-bold text-foreground tabular-nums">
+                {formatLKR(saleData.amountTendered)}
+              </span>
+            </div>
+          )}
+
           <div className="border-t border-border/80 pt-3 flex justify-between items-baseline">
-            <span className="text-base font-semibold">Change Due:</span>
+            <span className="text-base font-semibold">Balance to Give Back:</span>
             <span className="font-mono text-3xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">
               {saleData.changeGiven ? formatLKR(saleData.changeGiven) : 'Rs. 0.00'}
             </span>

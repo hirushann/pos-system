@@ -17,6 +17,7 @@ import {
   Receipt,
   Eye,
   Printer,
+  Trash2,
   ChevronLeft,
   ChevronRight,
   Banknote,
@@ -27,6 +28,7 @@ import {
 import { formatLKR } from '@/src/lib/money';
 import { formatColomboTimestamp } from '@/src/lib/dates';
 import type { SaleListItem } from '@/src/data/sales';
+import { DeleteSaleDialog } from './delete-sale-dialog';
 
 interface SalesTableProps {
   sales: SaleListItem[];
@@ -34,6 +36,7 @@ interface SalesTableProps {
   totalPages: number;
   currentPage: number;
   pageSize: number;
+  isOwner?: boolean;
 }
 
 export function SalesTable({
@@ -42,7 +45,9 @@ export function SalesTable({
   totalPages,
   currentPage,
   pageSize,
+  isOwner = false,
 }: SalesTableProps) {
+  const [saleToDelete, setSaleToDelete] = React.useState<SaleListItem | null>(null);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -216,6 +221,20 @@ export function SalesTable({
                             <span>Reprint</span>
                           </Link>
                         </Button>
+
+                        {isOwner && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSaleToDelete(sale)}
+                            className="h-7 border-destructive/40 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            aria-label={`Delete sale ${sale.receiptNumber}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            <span>Delete</span>
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -264,6 +283,18 @@ export function SalesTable({
             </Button>
           </div>
         </div>
+      )}
+
+      {isOwner && saleToDelete && (
+        <DeleteSaleDialog
+          open
+          onOpenChange={(next) => {
+            if (!next) setSaleToDelete(null);
+          }}
+          saleId={saleToDelete.id}
+          receiptNumber={saleToDelete.receiptNumber}
+          isVoided={saleToDelete.status === 'voided'}
+        />
       )}
     </div>
   );

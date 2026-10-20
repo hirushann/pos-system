@@ -16,6 +16,7 @@ import {
   Printer,
   ArrowLeft,
   Ban,
+  Trash2,
   AlertTriangle,
   CheckCircle2,
   Calendar,
@@ -28,6 +29,7 @@ import {
 import { formatLKR } from '@/src/lib/money';
 import { formatColomboTimestamp } from '@/src/lib/dates';
 import { VoidSaleDialog } from './void-sale-dialog';
+import { DeleteSaleDialog } from './delete-sale-dialog';
 import type { SaleDetail } from '@/src/data/sales';
 
 interface SaleDetailViewProps {
@@ -37,6 +39,7 @@ interface SaleDetailViewProps {
 
 export function SaleDetailView({ sale, isOwner }: SaleDetailViewProps) {
   const [isVoidDialogOpen, setIsVoidDialogOpen] = React.useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false);
 
   const isVoided = sale.status === 'voided';
 
@@ -104,6 +107,19 @@ export function SaleDetailView({ sale, isOwner }: SaleDetailViewProps) {
             >
               <Ban className="h-3.5 w-3.5" />
               <span>Void Sale</span>
+            </Button>
+          )}
+
+          {isOwner && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsDeleteDialogOpen(true)}
+              className="gap-1.5 border-destructive/40 text-xs font-semibold text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete</span>
             </Button>
           )}
         </div>
@@ -274,6 +290,18 @@ export function SaleDetailView({ sale, isOwner }: SaleDetailViewProps) {
           onOpenChange={setIsVoidDialogOpen}
           saleId={sale.id}
           receiptNumber={sale.receiptNumber}
+        />
+      )}
+
+      {/* Delete Dialog Modal */}
+      {isOwner && (
+        <DeleteSaleDialog
+          open={isDeleteDialogOpen}
+          onOpenChange={setIsDeleteDialogOpen}
+          saleId={sale.id}
+          receiptNumber={sale.receiptNumber}
+          isVoided={isVoided}
+          redirectTo="/sales"
         />
       )}
     </div>

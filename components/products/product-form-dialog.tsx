@@ -102,7 +102,6 @@ function ProductFormContent({
   const isEdit = Boolean(product);
 
   // Form states initialized directly from product props
-  const [sku, setSku] = React.useState(product ? product.sku : '');
   const [name, setName] = React.useState(product ? product.name : '');
   const [partNumber, setPartNumber] = React.useState(product ? product.partNumber : '');
   const [categoryId, setCategoryId] = React.useState(
@@ -235,7 +234,6 @@ function ProductFormContent({
     try {
       if (isEdit && product) {
         const res = await updateProduct(product.id, {
-          sku: sku.trim(),
           name: name.trim(),
           partNumber: partNumber.trim(),
           categoryId: catIdNum,
@@ -260,7 +258,6 @@ function ProductFormContent({
         toast.success(`Product "${name.trim()}" updated successfully`);
       } else {
         const res = await createProduct({
-          sku: sku.trim(),
           name: name.trim(),
           partNumber: partNumber.trim(),
           categoryId: catIdNum,
@@ -325,21 +322,22 @@ function ProductFormContent({
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-foreground">Basic Information</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {/* SKU */}
+            {/* SKU: generated automatically, never typed. It is also the barcode. */}
             <div className="space-y-1">
-              <Label htmlFor="prod-sku">
-                SKU Code <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="prod-sku">SKU / Barcode</Label>
               <Input
                 id="prod-sku"
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                placeholder="e.g. TOY-BRK-001"
-                required
+                value={isEdit && product ? product.sku : ''}
+                placeholder="Generated when saved"
+                readOnly
+                disabled
+                className="bg-muted font-mono"
               />
-              {fieldErrors.sku && (
-                <p className="text-xs font-medium text-destructive">{fieldErrors.sku}</p>
-              )}
+              <p className="text-2xs text-muted-foreground">
+                {isEdit
+                  ? 'Fixed. The SKU is also the barcode.'
+                  : 'A unique number is created when you save. It is also the barcode.'}
+              </p>
             </div>
 
             {/* Part Number */}
