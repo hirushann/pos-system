@@ -11,6 +11,7 @@ import {
   index,
   unique,
   uniqueIndex,
+  date,
 } from 'drizzle-orm/mysql-core';
 import { ts, nowSql } from './columns';
 import { user } from './auth-schema';
@@ -325,6 +326,105 @@ export const settings = mysqlTable(
 );
 
 // ---------------------------------------------------------------------------
+// Suppliers, their invoices (what the shop owes), payments and price lists
+// ---------------------------------------------------------------------------
+export const suppliers = mysqlTable(
+  'suppliers',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    name: varchar('name', { length: 255 }).notNull().unique(),
+    contactPerson: varchar('contact_person', { length: 255 }),
+    phone: varchar('phone', { length: 255 }),
+    email: varchar('email', { length: 255 }),
+    address: varchar('address', { length: 500 }),
+    /** Default credit period in days; pre-fills the due date of new invoices. */
+    paymentTermsDays: int('payment_terms_days').notNull().default(0),
+    notes: text('notes'),
+    active: boolean('active').notNull().default(true),
+    createdAt: ts('created_at').notNull().default(nowSql),
+  },
+  (t) => [check('suppliers_terms_check', sql`${t.paymentTermsDays} >= 0`)],
+);
+
+export const supplierInvoices = mysqlTable(
+  'supplier_invoices',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    supplierId: bigint('supplier_id', { mode: 'number' })
+      .notNull()
+      .references(() => suppliers.id),
+    invoiceNumber: varchar('invoice_number', { length: 255 }).notNull(),
+    invoiceDate: date('invoice_date', { mode: 'string' }).notNull(),
+    dueDate: date('due_date', { mode: 'string' }),
+    amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+    notes: text('notes'),
+    createdBy: varchar('created_by', { length: 255 }).references(() => user.id),
+    createdAt: ts('created_at').notNull().default(nowSql),
+  },
+  (t) => [
+    unique('supplier_invoices_supplier_number_unique').on(t.supplierId, t.invoiceNumber),
+    check('supplier_invoices_amount_check', sql`${t.amount} > 0`),
+    index('supplier_invoices_supplier_id_idx').on(t.supplierId),
+    index('supplier_invoices_due_date_idx').on(t.dueDate),
+  ],
+);
+
+export const supplierPayments = mysqlTable(
+  'supplier_payments',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    invoiceId: bigint('invoice_id', { mode: 'number' })
+      .notNull()
+      .references(() => supplierInvoices.id),
+    paymentDate: date('payment_date', { mode: 'string' }).notNull(),
+    amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+    method: varchar('method', { length: 32 }).notNull(), // cash | bank_transfer | cheque
+    /** Bank transfer reference / receipt number. */
+    reference: varchar('reference', { length: 255 }),
+    chequeNumber: varchar('cheque_number', { length: 64 }),
+    chequeBank: varchar('cheque_bank', { length: 255 }),
+    /** Date written on the cheque (may be post-dated). */
+    chequeDate: date('cheque_date', { mode: 'string' }),
+    /** pending | cleared | bounced. A bounced cheque no longer counts as paid. */
+    chequeStatus: varchar('cheque_status', { length: 16 }),
+    notes: text('notes'),
+    createdBy: varchar('created_by', { length: 255 }).references(() => user.id),
+    createdAt: ts('created_at').notNull().default(nowSql),
+  },
+  (t) => [
+    check('supplier_payments_amount_check', sql`${t.amount} > 0`),
+    check('supplier_payments_method_check', sql`${t.method} IN ('cash', 'bank_transfer', 'cheque')`),
+    check(
+      'supplier_payments_cheque_check',
+      sql`(${t.method} = 'cheque') = (${t.chequeStatus} IS NOT NULL) AND (${t.chequeStatus} IS NULL OR ${t.chequeStatus} IN ('pending', 'cleared', 'bounced'))`,
+    ),
+    index('supplier_payments_invoice_id_idx').on(t.invoiceId),
+    index('supplier_payments_date_idx').on(t.paymentDate),
+  ],
+);
+
+export const supplierPriceItems = mysqlTable(
+  'supplier_price_items',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    supplierId: bigint('supplier_id', { mode: 'number' })
+      .notNull()
+      .references(() => suppliers.id, { onDelete: 'cascade' }),
+    itemName: varchar('item_name', { length: 255 }).notNull(),
+    partNumber: varchar('part_number', { length: 255 }),
+    unitPrice: decimal('unit_price', { precision: 12, scale: 2 }).notNull(),
+    /** The day the supplier quoted this price. */
+    priceDate: date('price_date', { mode: 'string' }).notNull(),
+    notes: varchar('notes', { length: 500 }),
+    updatedAt: ts('updated_at').notNull().default(nowSql),
+  },
+  (t) => [
+    check('supplier_price_items_price_check', sql`${t.unitPrice} >= 0`),
+    index('supplier_price_items_supplier_id_idx').on(t.supplierId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Drizzle Relations
 // ---------------------------------------------------------------------------
 export const relations = defineRelations(
@@ -478,3 +578,7 @@ export type Settings = typeof settings.$inferSelect;
 export type NewSettings = typeof settings.$inferInsert;
 
 export * from './auth-schema';
+export type Supplier = typeof suppliers.$inferSelect;
+export type SupplierInvoice = typeof supplierInvoices.$inferSelect;
+export type SupplierPayment = typeof supplierPayments.$inferSelect;
+export type SupplierPriceItem = typeof supplierPriceItems.$inferSelect;

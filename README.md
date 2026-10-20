@@ -207,6 +207,18 @@ How an import behaves:
 
 ---
 
+## Suppliers and Payables
+
+Owner-only. **Suppliers** in the sidebar tracks what the shop owes its suppliers.
+
+- **Suppliers**: contact details and a default credit period (days). Each supplier has its own page with invoices, payments and a price list.
+- **Invoices**: record each supplier bill (number, date, due date, amount). The due date is pre-filled from the supplier's credit period. Status is worked out automatically: Unpaid, Partially paid, Paid, or Overdue (still owing past the due date).
+- **Payments**: record any number of payments per invoice by cash, bank transfer or cheque. A payment can never be more than the balance owed. Cheques also keep number, bank, cheque date and a status (Pending, Cleared, Bounced).
+  - A pending cheque counts as paid, because it has been handed over. If it bounces, mark it Bounced and the amount is owed again.
+- **Price list**: per supplier, the part, their quoted price and the date quoted.
+- Nothing here changes product stock. It is money tracking only.
+- An invoice with payments cannot be deleted (remove the payments first), and a supplier with invoices cannot be deleted (mark it inactive).
+
 ## Database Backup & Restore
 
 ### Taking a Backup

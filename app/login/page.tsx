@@ -34,7 +34,7 @@ function LoginForm() {
   React.useEffect(() => {
     if (!isPending && session?.user && !session.user.banned && !bannedParam) {
       const userRole = (session.user as { role?: string }).role;
-      router.push(userRole === 'owner' ? '/reports' : '/checkout');
+      router.push(userRole === 'owner' ? '/dashboard' : '/checkout');
     }
   }, [session, isPending, bannedParam, router]);
 
@@ -65,7 +65,7 @@ function LoginForm() {
       }
 
       const role = (result.data?.user as { role?: string } | undefined)?.role;
-      router.push(role === 'owner' ? '/reports' : '/checkout');
+      router.push(role === 'owner' ? '/dashboard' : '/checkout');
       router.refresh();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred.';

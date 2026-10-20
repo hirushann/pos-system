@@ -19,6 +19,20 @@ import {
   executeLookupBarcode,
   executeDeleteSale,
 } from '@/src/actions/sales';
+import {
+  createSupplierOp,
+  updateSupplierOp,
+  deleteSupplierOp,
+  createInvoiceOp,
+  updateInvoiceOp,
+  deleteInvoiceOp,
+  recordPaymentOp,
+  setChequeStatusOp,
+  deletePaymentOp,
+  savePriceItemOp,
+  deletePriceItemOp,
+} from '@/src/lib/supplier-ops';
+import { getInvoiceRows, getPayablesSummary, getSupplierList, getPriceList } from '@/src/data/suppliers';
 import { executeAdjustStock } from '@/src/actions/inventory';
 import { executeCreateProduct, executeAddManufacturerBarcode } from '@/src/actions/products';
 import { generateInternalBarcode, isValidInternalBarcode } from '@/src/lib/barcode';
@@ -1011,6 +1025,205 @@ describe('POS System Hardening & Core Transactions (pos_test)', () => {
       expect(preview.counts.create).toBe(0);
       expect(preview.counts.update).toBe(0);
       expect(preview.counts.unchanged).toBe(await count(products));
+    });
+  });
+
+  describe('suppliers, invoices and payments', () => {
+    const today = new Date().toISOString().slice(0, 10);
+
+    async function newSupplier(name = 'Lanka Parts Traders') {
+      const res = await createSupplierOp({ name, paymentTermsDays: 30, active: true }, TEST_OWNER);
+      expect(res.success).toBe(true);
+      return res.data!.id;
+    }
+
+    async function newInvoice(supplierId: number, amount = '10000.00', number = 'INV-1', dueDate: string | null = '2099-01-01') {
+      const res = await createInvoiceOp(
+        { supplierId, invoiceNumber: number, invoiceDate: '2019-01-01', dueDate, amount },
+        TEST_OWNER,
+      );
+      expect(res.success).toBe(true);
+      return res.data!.id;
+    }
+
+    const cash = (invoiceId: number, amount: string) => ({
+      invoiceId,
+      paymentDate: today,
+      amount,
+      method: 'cash' as const,
+    });
+
+    it('only owners can use supplier operations', async () => {
+      const res = await createSupplierOp({ name: 'X', paymentTermsDays: 0 }, TEST_CASHIER);
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/Forbidden/);
+    });
+
+    it('rejects duplicate supplier names and duplicate invoice numbers per supplier', async () => {
+      const a = await newSupplier('A Traders');
+      const dup = await createSupplierOp({ name: 'A Traders', paymentTermsDays: 0 }, TEST_OWNER);
+      expect(dup.success).toBe(false);
+
+      const b = await newSupplier('B Traders');
+      await newInvoice(a, '100.00', 'SAME');
+      const again = await createInvoiceOp(
+        { supplierId: a, invoiceNumber: 'SAME', invoiceDate: '2026-10-02', amount: '5.00' },
+        TEST_OWNER,
+      );
+      expect(again.success).toBe(false);
+      // the same number is fine for another supplier
+      await newInvoice(b, '100.00', 'SAME');
+    });
+
+    it('tracks unpaid, partial and fully paid invoices across payment methods', async () => {
+      const s = await newSupplier();
+      const inv = await newInvoice(s, '10000.00');
+
+      let [row] = await getInvoiceRows({ supplierId: s });
+      expect(row.status).toBe('unpaid');
+      expect(row.balance).toBe('10000.00');
+
+      const p1 = await recordPaymentOp(cash(inv, '2500.50'), TEST_OWNER);
+      expect(p1.success).toBe(true);
+      expect(p1.data?.balance).toBe('7499.50');
+      [row] = await getInvoiceRows({ supplierId: s });
+      expect(row.status).toBe('partial');
+      expect(row.paid).toBe('2500.50');
+
+      const p2 = await recordPaymentOp(
+        { ...cash(inv, '2000.00'), method: 'bank_transfer', reference: 'TXN-77' },
+        TEST_OWNER,
+      );
+      expect(p2.success).toBe(true);
+
+      const p3 = await recordPaymentOp(
+        { ...cash(inv, '5499.50'), method: 'cheque', chequeNumber: '000123', chequeBank: 'BOC', chequeDate: today },
+        TEST_OWNER,
+      );
+      expect(p3.success).toBe(true);
+      [row] = await getInvoiceRows({ supplierId: s });
+      expect(row.status).toBe('paid');
+      expect(row.balance).toBe('0.00');
+      expect(await getInvoiceRows({ status: 'open' })).toHaveLength(0);
+    });
+
+    it('does not allow paying more than the balance, even concurrently', async () => {
+      const s = await newSupplier();
+      const inv = await newInvoice(s, '1000.00');
+      expect((await recordPaymentOp(cash(inv, '1000.01'), TEST_OWNER)).success).toBe(false);
+
+      const results = await Promise.all([
+        recordPaymentOp(cash(inv, '600.00'), TEST_OWNER),
+        recordPaymentOp(cash(inv, '600.00'), TEST_OWNER),
+      ]);
+      expect(results.filter((r) => r.success)).toHaveLength(1);
+      const [row] = await getInvoiceRows({ supplierId: s });
+      expect(row.paid).toBe('600.00');
+    });
+
+    it('requires a cheque number for cheques', async () => {
+      const s = await newSupplier();
+      const inv = await newInvoice(s);
+      const res = await recordPaymentOp({ ...cash(inv, '100.00'), method: 'cheque' }, TEST_OWNER);
+      expect(res.success).toBe(false);
+      expect(res.fieldErrors?.chequeNumber).toBeDefined();
+    });
+
+    it('a bounced cheque stops counting and can be paid again', async () => {
+      const s = await newSupplier();
+      const inv = await newInvoice(s, '5000.00');
+      const cheque = await recordPaymentOp(
+        { ...cash(inv, '5000.00'), method: 'cheque', chequeNumber: '555' },
+        TEST_OWNER,
+      );
+      expect(cheque.success).toBe(true);
+      expect((await getInvoiceRows())[0].status).toBe('paid');
+
+      const summary = await getPayablesSummary();
+      expect(summary.pendingChequesCount).toBe(1);
+      expect(summary.pendingChequesAmount).toBe('5000.00');
+
+      expect((await setChequeStatusOp(cheque.data!.id, 'bounced', TEST_OWNER)).success).toBe(true);
+      const [row] = await getInvoiceRows();
+      expect(row.status).toBe('unpaid');
+      expect(row.balance).toBe('5000.00');
+
+      // paid again in cash; now the old cheque cannot be counted again
+      expect((await recordPaymentOp(cash(inv, '5000.00'), TEST_OWNER)).success).toBe(true);
+      const back = await setChequeStatusOp(cheque.data!.id, 'cleared', TEST_OWNER);
+      expect(back.success).toBe(false);
+    });
+
+    it('flags overdue invoices and totals the summary', async () => {
+      const s = await newSupplier();
+      await newInvoice(s, '3000.00', 'LATE', '2020-01-01');
+      const paid = await newInvoice(s, '1000.00', 'DONE', '2020-01-01');
+      await recordPaymentOp(cash(paid, '1000.00'), TEST_OWNER);
+      await newInvoice(s, '500.00', 'FUTURE', '2099-01-01');
+
+      const overdue = await getInvoiceRows({ status: 'overdue' });
+      expect(overdue.map((r) => r.invoiceNumber)).toEqual(['LATE']);
+
+      const summary = await getPayablesSummary();
+      expect(summary.outstanding).toBe('3500.00');
+      expect(summary.overdueAmount).toBe('3000.00');
+      expect(summary.overdueInvoices).toBe(1);
+
+      const [listed] = await getSupplierList();
+      expect(listed.totalInvoiced).toBe('4500.00');
+      expect(listed.totalPaid).toBe('1000.00');
+      expect(listed.outstanding).toBe('3500.00');
+    });
+
+    it('guards invoice edits and deletes, and supplier deletes', async () => {
+      const s = await newSupplier();
+      const inv = await newInvoice(s, '2000.00');
+      const pay = await recordPaymentOp(cash(inv, '1500.00'), TEST_OWNER);
+
+      const tooLow = await updateInvoiceOp(
+        inv,
+        { supplierId: s, invoiceNumber: 'INV-1', invoiceDate: '2026-10-01', amount: '1000.00' },
+        TEST_OWNER,
+      );
+      expect(tooLow.success).toBe(false);
+      const raise = await updateInvoiceOp(
+        inv,
+        { supplierId: s, invoiceNumber: 'INV-1', invoiceDate: '2026-10-01', amount: '2500.00' },
+        TEST_OWNER,
+      );
+      expect(raise.success).toBe(true);
+
+      expect((await deleteInvoiceOp(inv, TEST_OWNER)).success).toBe(false); // has payments
+      expect((await deleteSupplierOp(s, TEST_OWNER)).success).toBe(false); // has invoices
+
+      expect((await deletePaymentOp(pay.data!.id, TEST_OWNER)).success).toBe(true);
+      expect((await deleteInvoiceOp(inv, TEST_OWNER)).success).toBe(true);
+      expect((await deleteSupplierOp(s, TEST_OWNER)).success).toBe(true);
+    });
+
+    it('keeps a price list per supplier and removes it with the supplier', async () => {
+      const s = await newSupplier();
+      const add = await savePriceItemOp(
+        { supplierId: s, itemName: 'Brake Pad Set', partNumber: 'BP-1', unitPrice: '4500', priceDate: today },
+        TEST_OWNER,
+      );
+      expect(add.success).toBe(true);
+      let list = await getPriceList(s);
+      expect(list).toHaveLength(1);
+      expect(list[0].unitPrice).toBe('4500.00');
+      expect(list[0].priceDate).toBe(today);
+
+      const edit = await savePriceItemOp(
+        { id: list[0].id, supplierId: s, itemName: 'Brake Pad Set', partNumber: 'BP-1', unitPrice: '4700.50', priceDate: today },
+        TEST_OWNER,
+      );
+      expect(edit.success).toBe(true);
+      list = await getPriceList(s);
+      expect(list[0].unitPrice).toBe('4700.50');
+
+      expect((await updateSupplierOp(s, { name: 'Renamed', paymentTermsDays: 7, active: false }, TEST_OWNER)).success).toBe(true);
+      expect((await deletePriceItemOp(list[0].id, TEST_OWNER)).success).toBe(true);
+      expect(await getPriceList(s)).toHaveLength(0);
     });
   });
 });

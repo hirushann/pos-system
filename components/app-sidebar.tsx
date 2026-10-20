@@ -16,6 +16,8 @@ import {
   ChevronRight,
   Database,
   Printer,
+  Truck,
+  LayoutDashboard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from '@/components/sidebar-context';
@@ -43,11 +45,13 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+  { title: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, ownerOnly: true },
   { title: 'Checkout', href: '/checkout', icon: ShoppingCart },
   { title: 'Products', href: '/products', icon: Package },
   { title: 'Labels', href: '/labels', icon: Printer, ownerOnly: true },
   { title: 'Inventory', href: '/inventory', icon: Boxes },
   { title: 'Sales', href: '/sales', icon: Receipt },
+  { title: 'Suppliers', href: '/suppliers', icon: Truck, ownerOnly: true },
   { title: 'Reports', href: '/reports', icon: BarChart3, ownerOnly: true },
   { title: 'Users', href: '/users', icon: Users, ownerOnly: true },
   { title: 'Settings', href: '/settings', icon: Settings, ownerOnly: true },
