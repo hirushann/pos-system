@@ -14,6 +14,7 @@ import {
   vehicleModels,
 } from '@/src/db/schema';
 import { requireUser, assertOwner } from '@/src/lib/auth-guards';
+import { normalizeUnit } from '@/src/lib/unit';
 import { eq, and, sql, count } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -57,7 +58,7 @@ const createProductSchema = z.object({
   categoryId: z.number().int().positive('Category is required'),
   brandId: z.number().int().positive().nullable().optional(),
   description: z.string().trim().nullable().optional(),
-  unit: z.string().trim().min(1).default('pcs'),
+  unit: z.string().trim().min(1).default('pcs').transform(normalizeUnit),
   binLocation: z.string().trim().nullable().optional(),
   costPrice: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Cost price must be a valid non-negative amount'),
   price: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Selling price must be a valid non-negative amount'),
@@ -74,7 +75,7 @@ const updateProductSchema = z.object({
   categoryId: z.number().int().positive('Category is required'),
   brandId: z.number().int().positive().nullable().optional(),
   description: z.string().trim().nullable().optional(),
-  unit: z.string().trim().min(1).default('pcs'),
+  unit: z.string().trim().min(1).default('pcs').transform(normalizeUnit),
   binLocation: z.string().trim().nullable().optional(),
   costPrice: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Cost price must be a valid non-negative amount'),
   price: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Selling price must be a valid non-negative amount'),

@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { normalizeUnit } from '@/src/lib/unit';
 import {
   Dialog,
   DialogContent,
@@ -239,7 +240,7 @@ function ProductFormContent({
           categoryId: catIdNum,
           brandId: brandIdNum,
           description: description.trim() || null,
-          unit: unit.trim() || 'pcs',
+          unit: normalizeUnit(unit),
           binLocation: binLocation.trim() || null,
           costPrice: costPrice.trim() || '0.00',
           price: price.trim() || '0.00',
@@ -263,7 +264,7 @@ function ProductFormContent({
           categoryId: catIdNum,
           brandId: brandIdNum,
           description: description.trim() || null,
-          unit: unit.trim() || 'pcs',
+          unit: normalizeUnit(unit),
           binLocation: binLocation.trim() || null,
           costPrice: costPrice.trim() || '0.00',
           price: price.trim() || '0.00',
@@ -447,6 +448,7 @@ function ProductFormContent({
                 onChange={(e) => setUnit(e.target.value)}
                 placeholder="pcs, set, pair"
               />
+              <p className="text-[11px] text-muted-foreground">A label only. Stock quantity is set separately.</p>
             </div>
           </div>
 

@@ -1,5 +1,6 @@
 import Decimal from 'decimal.js';
 import { parseCsv, toCsv, unguardCell } from '@/src/lib/csv';
+import { normalizeUnit } from '@/src/lib/unit';
 
 /*
  * Product CSV format (one product per row, first row = column names).
@@ -292,7 +293,7 @@ export function parseProductCsv(text: string): ParsedProductCsv {
       category: cell(line, 'category'),
       brand: cell(line, 'brand') || null,
       description: cell(line, 'description') || null,
-      unit: cell(line, 'unit') || null,
+      unit: cell(line, 'unit') ? normalizeUnit(cell(line, 'unit')) : null,
       binLocation: cell(line, 'bin_location') || null,
       costPrice: '',
       price: '',
