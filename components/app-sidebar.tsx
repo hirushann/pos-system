@@ -14,7 +14,6 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  Database,
   Printer,
   Truck,
   LayoutDashboard,
@@ -130,16 +129,6 @@ export function AppSidebar() {
           <div className="flex-1 overflow-y-auto">
             {renderNavLinks(false, () => setMobileOpen(false))}
           </div>
-          <div className="border-t p-3">
-            <Link
-              href="/dev/db"
-              onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            >
-              <Database className="h-4 w-4" />
-              <span>Dev DB Connection</span>
-            </Link>
-          </div>
         </SheetContent>
       </Sheet>
 
@@ -179,43 +168,8 @@ export function AppSidebar() {
           {renderNavLinks(isCollapsed)}
         </div>
 
-        {/* Bottom Dev DB & Collapse Toggle */}
+        {/* Bottom Collapse Toggle */}
         <div className="border-t p-2 flex flex-col gap-1">
-          {/* Dev DB Link */}
-          {isCollapsed ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  href="/dev/db"
-                  className={cn(
-                    'flex items-center justify-center rounded-lg p-2 text-sm transition-colors',
-                    pathname === '/dev/db'
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                  )}
-                >
-                  <Database className="h-4 w-4" />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={8}>
-                Dev DB Status
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <Link
-              href="/dev/db"
-              className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-colors',
-                pathname === '/dev/db'
-                  ? 'bg-primary text-primary-foreground shadow-xs'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-              )}
-            >
-              <Database className="h-4 w-4 shrink-0" />
-              <span>Dev DB Connection</span>
-            </Link>
-          )}
-
           {/* Collapse Button */}
           <Button
             variant="ghost"

@@ -18,7 +18,7 @@ import {
   executeVoidSale,
   executeLookupBarcode,
   executeDeleteSale,
-} from '@/src/actions/sales';
+} from '@/src/lib/sales-ops';
 import {
   createSupplierOp,
   updateSupplierOp,
@@ -36,8 +36,8 @@ import { getInvoiceRows, getPayablesSummary, getSupplierList, getPriceList } fro
 import { setSaleChequeStatusOp } from '@/src/lib/sale-cheque';
 import { getSalesSummaryTotals, getSaleDetail } from '@/src/data/sales';
 import { getDailySalesReport } from '@/src/data/reports';
-import { executeAdjustStock } from '@/src/actions/inventory';
-import { executeCreateProduct, executeAddManufacturerBarcode } from '@/src/actions/products';
+import { executeAdjustStock } from '@/src/lib/inventory-ops';
+import { executeCreateProduct, executeAddManufacturerBarcode } from '@/src/lib/products-ops';
 import { generateInternalBarcode, isValidInternalBarcode } from '@/src/lib/barcode';
 import {
   insertInternalBarcode,
