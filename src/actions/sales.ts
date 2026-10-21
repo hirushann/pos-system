@@ -22,6 +22,7 @@ import Decimal from 'decimal.js';
 import { z } from 'zod';
 
 import { getDbErrorKind, mapDatabaseError } from '@/src/lib/db-errors';
+import { setSaleChequeStatusOp } from '@/src/lib/sale-cheque';
 
 // ============================================================================
 // Schemas
@@ -43,8 +44,17 @@ const saleItemInputSchema = z.object({
 
 const completeSaleInputSchema = z.object({
   items: z.array(saleItemInputSchema).min(1, 'Cart cannot be empty'),
-  paymentMethod: z.enum(['cash', 'card']),
+  paymentMethod: z.enum(['cash', 'card', 'cheque']),
   amountTendered: z.string().trim().optional().nullable(),
+  chequeNumber: z.string().trim().max(64).optional().nullable(),
+  chequeBank: z.string().trim().max(255).optional().nullable(),
+  chequeDate: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Cheque date must be YYYY-MM-DD')
+    .optional()
+    .nullable()
+    .or(z.literal('')),
   discountType: z.enum(['none', 'amount', 'percent']).default('none'),
   discountValue: z.string().trim().default('0'),
   customerName: z.string().trim().max(100).optional().nullable(),
@@ -69,7 +79,8 @@ export interface CompleteSaleResultData {
   discount: string;
   changeGiven: string | null;
   amountTendered: string | null;
-  paymentMethod: 'cash' | 'card';
+  paymentMethod: 'cash' | 'card' | 'cheque';
+  chequeNumber: string | null;
 }
 
 // ============================================================================
@@ -254,9 +265,17 @@ export async function executeCompleteSale(
         amountTenderedStr = tenderedDec.toFixed(2);
         changeGivenStr = changeDec.toFixed(2);
       } else {
-        // Card payment - no tendered amount
+        // Card or cheque payment: the exact total is paid, so nothing is tendered or given back
         amountTenderedStr = null;
         changeGivenStr = null;
+      }
+
+      let chequeNumber: string | null = null;
+      if (input.paymentMethod === 'cheque') {
+        chequeNumber = input.chequeNumber?.trim() || null;
+        if (!chequeNumber) {
+          throw new Error('Enter the cheque number for a cheque payment.');
+        }
       }
 
       // 6. Generate gap-free receipt number for current year in Asia/Colombo
@@ -292,6 +311,11 @@ export async function executeCompleteSale(
           total: totalDec.toFixed(2),
           amountTendered: amountTenderedStr,
           changeGiven: changeGivenStr,
+          paymentMethod: input.paymentMethod,
+          chequeNumber,
+          chequeBank: input.paymentMethod === 'cheque' ? input.chequeBank?.trim() || null : null,
+          chequeDate: input.paymentMethod === 'cheque' ? input.chequeDate || null : null,
+          chequeStatus: input.paymentMethod === 'cheque' ? 'pending' : null,
           customerName: input.customerName || null,
           customerPhone: input.customerPhone || null,
           vehicleNo: input.vehicleNo || null,
@@ -342,6 +366,7 @@ export async function executeCompleteSale(
         changeGiven: changeGivenStr,
         amountTendered: amountTenderedStr,
         paymentMethod: input.paymentMethod,
+        chequeNumber,
       };
     });
 
@@ -382,6 +407,8 @@ export interface ReceiptData {
     total: string;
     amountTendered: string | null;
     changeGiven: string | null;
+    paymentMethod: string;
+    chequeNumber: string | null;
     customerName: string | null;
     customerPhone: string | null;
     vehicleNo: string | null;
@@ -420,6 +447,8 @@ export async function executeGetSaleReceiptData(saleId: number): Promise<Receipt
       total: sales.total,
       amountTendered: sales.amountTendered,
       changeGiven: sales.changeGiven,
+      paymentMethod: sales.paymentMethod,
+      chequeNumber: sales.chequeNumber,
       customerName: sales.customerName,
       customerPhone: sales.customerPhone,
       vehicleNo: sales.vehicleNo,
@@ -472,6 +501,8 @@ export async function executeGetSaleReceiptData(saleId: number): Promise<Receipt
       total: sale.total,
       amountTendered: sale.amountTendered,
       changeGiven: sale.changeGiven,
+      paymentMethod: sale.paymentMethod,
+      chequeNumber: sale.chequeNumber,
       customerName: sale.customerName,
       customerPhone: sale.customerPhone,
       vehicleNo: sale.vehicleNo,
@@ -905,3 +936,25 @@ export async function executeLookupBarcode(
   };
 }
 
+
+// ============================================================================
+// Customer cheque status (owner only)
+// ============================================================================
+
+export async function setSaleChequeStatus(
+  saleId: number,
+  status: 'pending' | 'cleared' | 'bounced',
+): Promise<ServerActionResult> {
+  const { user } = await requireUser();
+  assertOwner(user);
+  const res = await setSaleChequeStatusOp(saleId, status, user);
+  if (res.success) {
+    try {
+      revalidatePath('/sales');
+      revalidatePath(`/sales/${saleId}`);
+    } catch {
+      // Ignored outside Next.js request scope
+    }
+  }
+  return res;
+}

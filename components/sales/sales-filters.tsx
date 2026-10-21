@@ -175,6 +175,7 @@ export function SalesFilters({ isOwner, cashiers, defaultDate }: SalesFiltersPro
               <SelectItem value="all">All Methods</SelectItem>
               <SelectItem value="cash">Cash Only</SelectItem>
               <SelectItem value="card">Card Only</SelectItem>
+              <SelectItem value="cheque">Cheque Only</SelectItem>
             </SelectContent>
           </Select>
         </div>

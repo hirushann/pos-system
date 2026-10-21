@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/table';
 import { formatLKR } from '@/src/lib/money';
 import type { CashierPerformanceItem } from '@/src/data/reports';
-import { Users, Banknote, CreditCard } from 'lucide-react';
+import { Users, Banknote, CreditCard, Landmark } from 'lucide-react';
 
 interface CashierSalesTableProps {
   cashiers: CashierPerformanceItem[];
@@ -42,6 +42,7 @@ export function CashierSalesTable({ cashiers }: CashierSalesTableProps) {
                   <TableHead className="text-center">Orders</TableHead>
                   <TableHead className="text-right">Cash</TableHead>
                   <TableHead className="text-right">Card</TableHead>
+                  <TableHead className="text-right">Cheque</TableHead>
                   <TableHead className="text-right">Gross Profit</TableHead>
                   <TableHead className="text-right">Total Revenue</TableHead>
                 </TableRow>
@@ -66,6 +67,12 @@ export function CashierSalesTable({ cashiers }: CashierSalesTableProps) {
                       <div className="inline-flex items-center gap-1">
                         <CreditCard className="h-3 w-3 text-blue-600" />
                         <span>{formatLKR(c.cardRevenue)}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+                      <div className="inline-flex items-center gap-1">
+                        <Landmark className="h-3 w-3 text-sky-600" />
+                        <span>{formatLKR(c.chequeRevenue)}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-right font-mono tabular-nums text-emerald-600 dark:text-emerald-400 font-medium">

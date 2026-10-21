@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Banknote,
   CreditCard,
+  Landmark,
   AlertTriangle,
   CheckCircle2,
 } from 'lucide-react';
@@ -173,6 +174,8 @@ export function SalesTable({
                       >
                         {sale.paymentMethod === 'Cash' ? (
                           <Banknote className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                        ) : sale.paymentMethod === 'Cheque' ? (
+                          <Landmark className="h-3 w-3 text-sky-600 dark:text-sky-400" />
                         ) : (
                           <CreditCard className="h-3 w-3 text-purple-600 dark:text-purple-400" />
                         )}

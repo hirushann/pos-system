@@ -4,11 +4,17 @@ import { eq, sql, and, desc, asc, inArray, count, gte, lte } from 'drizzle-orm';
 import { getColomboDateRange, getColomboDateString } from '@/src/lib/dates';
 import Decimal from 'decimal.js';
 
+export type PaymentMethodLabel = 'Cash' | 'Card' | 'Cheque';
+
+export function paymentMethodLabel(method: string): PaymentMethodLabel {
+  return method === 'card' ? 'Card' : method === 'cheque' ? 'Cheque' : 'Cash';
+}
+
 export interface SalesFilterParams {
   startDate?: string | null;
   endDate?: string | null;
   cashierId?: string | null;
-  paymentMethod?: 'all' | 'cash' | 'card';
+  paymentMethod?: 'all' | 'cash' | 'card' | 'cheque';
   status?: 'all' | 'completed' | 'voided';
   search?: string | null;
   page?: number;
@@ -25,7 +31,7 @@ export interface SaleListItem {
   total: string;
   amountTendered: string | null;
   changeGiven: string | null;
-  paymentMethod: 'Cash' | 'Card';
+  paymentMethod: 'Cash' | 'Card' | 'Cheque';
   cashierId: string;
   cashierName: string;
   customerName: string | null;
@@ -53,6 +59,8 @@ export interface SalesSummaryTotals {
   cashCount: number;
   cardRevenue: string; // Excludes voided
   cardCount: number;
+  chequeRevenue: string; // Excludes voided
+  chequeCount: number;
 }
 
 export interface SaleDetailItem {
@@ -76,7 +84,11 @@ export interface SaleDetail {
   total: string;
   amountTendered: string | null;
   changeGiven: string | null;
-  paymentMethod: 'Cash' | 'Card';
+  paymentMethod: 'Cash' | 'Card' | 'Cheque';
+  chequeNumber: string | null;
+  chequeBank: string | null;
+  chequeDate: string | null;
+  chequeStatus: 'pending' | 'cleared' | 'bounced' | null;
   cashierId: string;
   cashierName: string;
   customerName: string | null;
@@ -124,10 +136,8 @@ function buildSalesWhereConditions(
   }
 
   // 3. Payment method filter
-  if (params.paymentMethod === 'cash') {
-    conditions.push(sql`${sales.amountTendered} IS NOT NULL`);
-  } else if (params.paymentMethod === 'card') {
-    conditions.push(sql`${sales.amountTendered} IS NULL`);
+  if (params.paymentMethod === 'cash' || params.paymentMethod === 'card' || params.paymentMethod === 'cheque') {
+    conditions.push(eq(sales.paymentMethod, params.paymentMethod));
   }
 
   // 4. Search by receipt no, customer name or phone, vehicle no
@@ -175,6 +185,7 @@ export async function getPaginatedSales(
       total: sales.total,
       amountTendered: sales.amountTendered,
       changeGiven: sales.changeGiven,
+      paymentMethod: sales.paymentMethod,
       customerName: sales.customerName,
       customerPhone: sales.customerPhone,
       vehicleNo: sales.vehicleNo,
@@ -227,7 +238,7 @@ export async function getPaginatedSales(
     total: r.total,
     amountTendered: r.amountTendered,
     changeGiven: r.changeGiven,
-    paymentMethod: r.amountTendered !== null ? 'Cash' : 'Card',
+    paymentMethod: paymentMethodLabel(r.paymentMethod),
     cashierId: r.cashierId,
     cashierName: r.cashierName || 'Cashier',
     customerName: r.customerName,
@@ -263,7 +274,7 @@ export async function getSalesSummaryTotals(
       id: sales.id,
       status: sales.status,
       total: sales.total,
-      amountTendered: sales.amountTendered,
+      paymentMethod: sales.paymentMethod,
     })
     .from(sales)
     .where(whereClause);
@@ -271,10 +282,12 @@ export async function getSalesSummaryTotals(
   let totalRevenueDec = new Decimal(0);
   let cashRevenueDec = new Decimal(0);
   let cardRevenueDec = new Decimal(0);
+  let chequeRevenueDec = new Decimal(0);
   let completedCount = 0;
   let voidedCount = 0;
   let cashCount = 0;
   let cardCount = 0;
+  let chequeCount = 0;
 
   for (const row of rows) {
     if (row.status === 'completed') {
@@ -282,7 +295,10 @@ export async function getSalesSummaryTotals(
       const rowTotal = new Decimal(row.total);
       totalRevenueDec = totalRevenueDec.plus(rowTotal);
 
-      if (row.amountTendered !== null) {
+      if (row.paymentMethod === 'cheque') {
+        chequeCount++;
+        chequeRevenueDec = chequeRevenueDec.plus(rowTotal);
+      } else if (row.paymentMethod === 'cash') {
         cashCount++;
         cashRevenueDec = cashRevenueDec.plus(rowTotal);
       } else {
@@ -303,6 +319,8 @@ export async function getSalesSummaryTotals(
     cashCount,
     cardRevenue: cardRevenueDec.toFixed(2),
     cardCount,
+    chequeRevenue: chequeRevenueDec.toFixed(2),
+    chequeCount,
   };
 }
 
@@ -326,6 +344,11 @@ export async function getSaleDetail(
       total: sales.total,
       amountTendered: sales.amountTendered,
       changeGiven: sales.changeGiven,
+      paymentMethod: sales.paymentMethod,
+      chequeNumber: sales.chequeNumber,
+      chequeBank: sales.chequeBank,
+      chequeDate: sales.chequeDate,
+      chequeStatus: sales.chequeStatus,
       customerName: sales.customerName,
       customerPhone: sales.customerPhone,
       vehicleNo: sales.vehicleNo,
@@ -397,7 +420,11 @@ export async function getSaleDetail(
     total: saleRow.total,
     amountTendered: saleRow.amountTendered,
     changeGiven: saleRow.changeGiven,
-    paymentMethod: saleRow.amountTendered !== null ? 'Cash' : 'Card',
+    paymentMethod: paymentMethodLabel(saleRow.paymentMethod),
+    chequeNumber: saleRow.chequeNumber,
+    chequeBank: saleRow.chequeBank,
+    chequeDate: saleRow.chequeDate,
+    chequeStatus: saleRow.chequeStatus as 'pending' | 'cleared' | 'bounced' | null,
     cashierId: saleRow.cashierId,
     cashierName: cashierUser?.name || 'Cashier',
     customerName: saleRow.customerName,

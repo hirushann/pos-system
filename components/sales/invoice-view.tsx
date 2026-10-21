@@ -505,7 +505,11 @@ export function InvoiceView({ sale, shop, isReprint }: InvoiceViewProps) {
                     {/* Payment + totals */}
                     <section className="inv-bottom">
                       <div className="inv-pay">
-                        <p>Payment: {sale.paymentMethod.toUpperCase()}</p>
+                        <p>
+                          Payment: {sale.paymentMethod.toUpperCase()}
+                          {sale.paymentMethod === 'Cheque' && sale.chequeNumber && ` No. ${sale.chequeNumber}`}
+                          {sale.paymentMethod === 'Cheque' && sale.chequeBank && ` (${sale.chequeBank})`}
+                        </p>
                         {sale.amountTendered !== null && (
                           <p>
                             Cash Given: Rs. {formatAmount(sale.amountTendered)}

@@ -204,6 +204,13 @@ export const sales = mysqlTable(
     total: decimal('total', { precision: 12, scale: 2 }).notNull(),
     amountTendered: decimal('amount_tendered', { precision: 12, scale: 2 }),
     changeGiven: decimal('change_given', { precision: 12, scale: 2 }),
+    /** cash | card | cheque. (Used to be inferred from amount_tendered, which cheques also leave empty.) */
+    paymentMethod: varchar('payment_method', { length: 16 }).notNull().default('cash'),
+    chequeNumber: varchar('cheque_number', { length: 64 }),
+    chequeBank: varchar('cheque_bank', { length: 255 }),
+    chequeDate: date('cheque_date', { mode: 'string' }),
+    /** pending | cleared | bounced; only set for cheque sales. */
+    chequeStatus: varchar('cheque_status', { length: 16 }),
     customerName: varchar('customer_name', { length: 255 }),
     customerPhone: varchar('customer_phone', { length: 255 }),
     vehicleNo: varchar('vehicle_no', { length: 255 }),
@@ -217,6 +224,11 @@ export const sales = mysqlTable(
     ),
     check('sales_discount_check', sql`${t.discount} >= 0 AND ${t.discount} <= ${t.subtotal}`),
     check('sales_total_check', sql`${t.total} = ${t.subtotal} - ${t.discount}`),
+    check('sales_payment_method_check', sql`${t.paymentMethod} IN ('cash', 'card', 'cheque')`),
+    check(
+      'sales_cheque_check',
+      sql`(${t.paymentMethod} = 'cheque') = (${t.chequeStatus} IS NOT NULL) AND (${t.chequeStatus} IS NULL OR ${t.chequeStatus} IN ('pending', 'cleared', 'bounced'))`,
+    ),
     index('sales_cashier_id_idx').on(t.cashierId),
     index('sales_voided_by_idx').on(t.voidedBy),
     index('sales_created_at_idx').on(t.createdAt),

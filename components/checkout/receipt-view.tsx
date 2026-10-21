@@ -16,7 +16,7 @@ interface ReceiptViewProps {
 export function ReceiptView({ data, isReprint }: ReceiptViewProps) {
   const { sale, items, shop, cashierName } = data;
 
-  const paymentMethodName = sale.amountTendered ? 'CASH' : 'CARD';
+  const paymentMethodName = sale.paymentMethod.toUpperCase();
   const isVoided = sale.status === 'voided';
 
   // Automatically trigger print on mount
@@ -183,6 +183,13 @@ export function ReceiptView({ data, isReprint }: ReceiptViewProps) {
             <span className="text-neutral-600">Payment Method:</span>
             <span className="font-bold">{paymentMethodName}</span>
           </div>
+
+          {sale.paymentMethod === 'cheque' && sale.chequeNumber && (
+            <div className="flex justify-between">
+              <span className="text-neutral-600">Cheque No:</span>
+              <span className="tabular-nums font-semibold">{sale.chequeNumber}</span>
+            </div>
+          )}
 
           {sale.amountTendered && (
             <div className="flex justify-between">

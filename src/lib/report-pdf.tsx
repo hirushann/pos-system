@@ -274,6 +274,7 @@ export function ReportPdf({ data }: { data: ReportPdfData }) {
   const profit = sum(dailySales.map((r) => r.profit));
   const cash = sum(dailySales.map((r) => r.cash));
   const card = sum(dailySales.map((r) => r.card));
+  const cheque = sum(dailySales.map((r) => r.cheque));
   const average = orders > 0 ? revenue.dividedBy(orders) : new Decimal(0);
 
   const trendTotal = data.revenue.reduce((n, d) => n + d.revenue, 0);
@@ -333,6 +334,8 @@ export function ReportPdf({ data }: { data: ReportPdfData }) {
           <Tile label="Cash payments" value={formatLKR(cash)} sub={`Discounts given: ${formatLKR(discount)}`} />
           <View style={{ width: 7 }} />
           <Tile label="Card payments" value={formatLKR(card)} />
+          <View style={{ width: 7 }} />
+          <Tile label="Cheque payments" value={formatLKR(cheque)} />
         </View>
 
         {/* Today at a glance */}
@@ -372,12 +375,13 @@ export function ReportPdf({ data }: { data: ReportPdfData }) {
           emptyText="No sales in this period."
           rows={data.cashiers}
           columns={[
-            { header: 'Cashier', width: '27%', bold: true, value: (r) => truncate(t(r.cashierName || r.cashierEmail), 26) },
-            { header: 'Sales', width: '9%', align: 'right', value: (r) => String(r.salesCount) },
-            { header: 'Revenue (Rs.)', width: '18%', align: 'right', value: (r) => formatAmount(r.totalRevenue) },
-            { header: 'Cash (Rs.)', width: '16%', align: 'right', value: (r) => formatAmount(r.cashRevenue) },
-            { header: 'Card (Rs.)', width: '15%', align: 'right', value: (r) => formatAmount(r.cardRevenue) },
-            { header: 'Profit (Rs.)', width: '15%', align: 'right', value: (r) => formatAmount(r.grossProfit) },
+            { header: 'Cashier', width: '22%', bold: true, value: (r) => truncate(t(r.cashierName || r.cashierEmail), 22) },
+            { header: 'Sales', width: '8%', align: 'right', value: (r) => String(r.salesCount) },
+            { header: 'Revenue (Rs.)', width: '16%', align: 'right', value: (r) => formatAmount(r.totalRevenue) },
+            { header: 'Cash (Rs.)', width: '14%', align: 'right', value: (r) => formatAmount(r.cashRevenue) },
+            { header: 'Card (Rs.)', width: '14%', align: 'right', value: (r) => formatAmount(r.cardRevenue) },
+            { header: 'Cheque (Rs.)', width: '14%', align: 'right', value: (r) => formatAmount(r.chequeRevenue) },
+            { header: 'Profit (Rs.)', width: '12%', align: 'right', value: (r) => formatAmount(r.grossProfit) },
           ]}
         />
 
@@ -386,15 +390,16 @@ export function ReportPdf({ data }: { data: ReportPdfData }) {
         <DataTable
           emptyText="No sales in this period."
           rows={dailySales}
-          footer={['Total', String(orders), formatAmount(revenue), formatAmount(discount), formatAmount(profit), formatAmount(cash), formatAmount(card)]}
+          footer={['Total', String(orders), formatAmount(revenue), formatAmount(discount), formatAmount(profit), formatAmount(cash), formatAmount(card), formatAmount(cheque)]}
           columns={[
-            { header: 'Date', width: '16%', bold: true, value: (r) => r.saleDate },
-            { header: 'Sales', width: '9%', align: 'right', value: (r) => String(r.salesCount) },
-            { header: 'Revenue (Rs.)', width: '17%', align: 'right', value: (r) => formatAmount(r.revenue) },
-            { header: 'Discount (Rs.)', width: '15%', align: 'right', value: (r) => formatAmount(r.discount) },
-            { header: 'Profit (Rs.)', width: '15%', align: 'right', value: (r) => formatAmount(r.profit) },
-            { header: 'Cash (Rs.)', width: '14%', align: 'right', value: (r) => formatAmount(r.cash) },
-            { header: 'Card (Rs.)', width: '14%', align: 'right', value: (r) => formatAmount(r.card) },
+            { header: 'Date', width: '14%', bold: true, value: (r) => r.saleDate },
+            { header: 'Sales', width: '7%', align: 'right', value: (r) => String(r.salesCount) },
+            { header: 'Revenue (Rs.)', width: '15%', align: 'right', value: (r) => formatAmount(r.revenue) },
+            { header: 'Disc. (Rs.)', width: '12%', align: 'right', value: (r) => formatAmount(r.discount) },
+            { header: 'Profit (Rs.)', width: '13%', align: 'right', value: (r) => formatAmount(r.profit) },
+            { header: 'Cash (Rs.)', width: '13%', align: 'right', value: (r) => formatAmount(r.cash) },
+            { header: 'Card (Rs.)', width: '13%', align: 'right', value: (r) => formatAmount(r.card) },
+            { header: 'Cheque (Rs.)', width: '13%', align: 'right', value: (r) => formatAmount(r.cheque) },
           ]}
         />
 

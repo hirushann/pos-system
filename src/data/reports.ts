@@ -64,6 +64,7 @@ export interface CashierPerformanceItem {
   totalRevenue: string;
   cashRevenue: string;
   cardRevenue: string;
+  chequeRevenue: string;
   grossProfit: string;
 }
 
@@ -75,6 +76,7 @@ export interface DailySalesReportItem {
   profit: string;
   cash: string;
   card: string;
+  cheque: string;
 }
 
 export interface StockValuationCategoryItem {
@@ -422,6 +424,7 @@ export async function getSalesByCashier(
     total_revenue: string;
     cash_revenue: string;
     card_revenue: string;
+    cheque_revenue: string;
     gross_profit: string;
   }>(sql`
     SELECT
@@ -430,8 +433,9 @@ export async function getSalesByCashier(
       u.email AS cashier_email,
       CAST(COUNT(s.id) AS SIGNED) AS sales_count,
       CAST(COALESCE(SUM(s.total), 0) AS DECIMAL(12,2)) AS total_revenue,
-      CAST(COALESCE(SUM(CASE WHEN s.amount_tendered IS NOT NULL THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS cash_revenue,
-      CAST(COALESCE(SUM(CASE WHEN s.amount_tendered IS NULL THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS card_revenue,
+      CAST(COALESCE(SUM(CASE WHEN s.payment_method = 'cash' THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS cash_revenue,
+      CAST(COALESCE(SUM(CASE WHEN s.payment_method = 'card' THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS card_revenue,
+      CAST(COALESCE(SUM(CASE WHEN s.payment_method = 'cheque' THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS cheque_revenue,
       CAST((COALESCE(SUM(items.items_margin), 0) - COALESCE(SUM(s.discount), 0)) AS DECIMAL(12,2)) AS gross_profit
     FROM sales s
     LEFT JOIN \`user\` u ON u.id = s.cashier_id
@@ -457,6 +461,7 @@ export async function getSalesByCashier(
     totalRevenue: r.total_revenue,
     cashRevenue: r.cash_revenue,
     cardRevenue: r.card_revenue,
+    chequeRevenue: r.cheque_revenue,
     grossProfit: r.gross_profit,
   }));
 }
@@ -481,6 +486,7 @@ export async function getDailySalesReport(
     profit: string;
     cash: string;
     card: string;
+    cheque: string;
   }>(sql`
     SELECT
       DATE_FORMAT(CONVERT_TZ(s.created_at, '+00:00', '+05:30'), '%Y-%m-%d') AS sale_date,
@@ -488,8 +494,9 @@ export async function getDailySalesReport(
       CAST(COALESCE(SUM(s.total), 0) AS DECIMAL(12,2)) AS revenue,
       CAST(COALESCE(SUM(s.discount), 0) AS DECIMAL(12,2)) AS discount,
       CAST((COALESCE(SUM(items.items_margin), 0) - COALESCE(SUM(s.discount), 0)) AS DECIMAL(12,2)) AS profit,
-      CAST(COALESCE(SUM(CASE WHEN s.amount_tendered IS NOT NULL THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS cash,
-      CAST(COALESCE(SUM(CASE WHEN s.amount_tendered IS NULL THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS card
+      CAST(COALESCE(SUM(CASE WHEN s.payment_method = 'cash' THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS cash,
+      CAST(COALESCE(SUM(CASE WHEN s.payment_method = 'card' THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS card,
+      CAST(COALESCE(SUM(CASE WHEN s.payment_method = 'cheque' THEN s.total ELSE 0 END), 0) AS DECIMAL(12,2)) AS cheque
     FROM sales s
     LEFT JOIN (
       SELECT
@@ -513,6 +520,7 @@ export async function getDailySalesReport(
     profit: r.profit,
     cash: r.cash,
     card: r.card,
+    cheque: r.cheque,
   }));
 }
 

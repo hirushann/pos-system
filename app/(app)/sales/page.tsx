@@ -24,7 +24,7 @@ export default async function SalesPage({
     startDate?: string;
     endDate?: string;
     cashierId?: string;
-    paymentMethod?: 'all' | 'cash' | 'card';
+    paymentMethod?: 'all' | 'cash' | 'card' | 'cheque';
     status?: 'all' | 'completed' | 'voided';
     search?: string;
   }>;

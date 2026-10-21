@@ -42,8 +42,8 @@ const base = (over: Partial<ReportPdfData> = {}): ReportPdfData => ({
     byQuantity: [{ productId: 1, sku: 'x', partNumber: 'BP-001', productName: 'Brake Pad', totalQuantity: 5, totalRevenue: '12500.00' }],
     byRevenue: [],
   },
-  cashiers: [{ cashierId: 'a', cashierName: 'Nimal', cashierEmail: 'n@x.lk', salesCount: 3, totalRevenue: '15000.00', cashRevenue: '10000.00', cardRevenue: '5000.00', grossProfit: '4000.00' }],
-  dailySales: [{ saleDate: '2026-10-20', salesCount: 3, revenue: '15000.00', discount: '0.00', profit: '4000.00', cash: '10000.00', card: '5000.00' }],
+  cashiers: [{ cashierId: 'a', cashierName: 'Nimal', cashierEmail: 'n@x.lk', salesCount: 3, totalRevenue: '15000.00', cashRevenue: '10000.00', cardRevenue: '5000.00', chequeRevenue: '0.00', grossProfit: '4000.00' }],
+  dailySales: [{ saleDate: '2026-10-20', salesCount: 3, revenue: '15000.00', discount: '0.00', profit: '4000.00', cash: '10000.00', card: '5000.00', cheque: '0.00' }],
   stockValuation: { categories: [{ categoryId: 1, categoryName: 'Brakes', itemsCount: 4, totalUnits: 20, valuation: '50000.00' }], totalItemsCount: 4, totalUnits: 20, totalValuation: '50000.00' },
   deadStock: Array.from({ length: 120 }, (_, i) => ({
     id: i, sku: `s${i}`, partNumber: `P-${i}`, name: 'Slow part', categoryName: 'Misc', brandName: null,

@@ -23,6 +23,7 @@ import {
   User,
   Car,
   Banknote,
+  Landmark,
   CreditCard,
   Phone,
 } from 'lucide-react';
@@ -30,6 +31,7 @@ import { formatLKR } from '@/src/lib/money';
 import { formatColomboTimestamp } from '@/src/lib/dates';
 import { VoidSaleDialog } from './void-sale-dialog';
 import { DeleteSaleDialog } from './delete-sale-dialog';
+import { SaleChequeInfo } from './sale-cheque-info';
 import type { SaleDetail } from '@/src/data/sales';
 
 interface SaleDetailViewProps {
@@ -192,6 +194,8 @@ export function SaleDetailView({ sale, isOwner }: SaleDetailViewProps) {
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
             {sale.paymentMethod === 'Cash' ? (
               <Banknote className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            ) : sale.paymentMethod === 'Cheque' ? (
+              <Landmark className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
             ) : (
               <CreditCard className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
             )}
@@ -206,6 +210,7 @@ export function SaleDetailView({ sale, isOwner }: SaleDetailViewProps) {
               </Badge>
             )}
           </div>
+          <SaleChequeInfo sale={sale} isOwner={isOwner} />
         </div>
       </div>
 

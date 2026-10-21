@@ -14,7 +14,7 @@ import { Label } from '@/components/ui/label';
 import { formatLKR } from '@/src/lib/money';
 import { computeCashPayment } from '@/src/lib/cash-payment';
 import Decimal from 'decimal.js';
-import { Banknote, CreditCard, Loader2, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Banknote, CreditCard, Landmark, Loader2, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface PaymentDialogProps {
   open: boolean;
@@ -24,8 +24,11 @@ interface PaymentDialogProps {
   discountAmount: Decimal;
   itemCount: number;
   onConfirmSale: (payment: {
-    method: 'cash' | 'card';
+    method: 'cash' | 'card' | 'cheque';
     amountTendered?: string;
+    chequeNumber?: string;
+    chequeBank?: string;
+    chequeDate?: string;
   }) => Promise<void>;
   isSubmitting: boolean;
 }
@@ -40,7 +43,10 @@ export function PaymentDialog({
   onConfirmSale,
   isSubmitting,
 }: PaymentDialogProps) {
-  const [method, setMethod] = React.useState<'cash' | 'card'>('cash');
+  const [method, setMethod] = React.useState<'cash' | 'card' | 'cheque'>('cash');
+  const [chequeNumber, setChequeNumber] = React.useState('');
+  const [chequeBank, setChequeBank] = React.useState('');
+  const [chequeDate, setChequeDate] = React.useState('');
   const [tenderedStr, setTenderedStr] = React.useState('');
   const [validationError, setValidationError] = React.useState<string | null>(null);
 
@@ -51,6 +57,9 @@ export function PaymentDialog({
     if (open) {
       const timer = setTimeout(() => {
         setMethod('cash');
+        setChequeNumber('');
+        setChequeBank('');
+        setChequeDate('');
         setTenderedStr(''); // empty on purpose: the cashier types what the customer really handed over
         setValidationError(null);
         tenderedInputRef.current?.focus();
@@ -62,7 +71,7 @@ export function PaymentDialog({
 
   // Balance to give back (or how much is still missing)
   const paymentState = React.useMemo(() => {
-    if (method === 'card') {
+    if (method === 'card' || method === 'cheque') {
       return {
         status: 'ok' as const,
         isValid: true,
@@ -114,6 +123,17 @@ export function PaymentDialog({
         method: 'cash',
         amountTendered: paymentState.tendered.toFixed(2),
       });
+    } else if (method === 'cheque') {
+      if (!chequeNumber.trim()) {
+        setValidationError('Enter the cheque number.');
+        return;
+      }
+      await onConfirmSale({
+        method: 'cheque',
+        chequeNumber: chequeNumber.trim(),
+        chequeBank: chequeBank.trim() || undefined,
+        chequeDate: chequeDate || undefined,
+      });
     } else {
       await onConfirmSale({
         method: 'card',
@@ -140,7 +160,7 @@ export function PaymentDialog({
 
         <form onSubmit={handleSubmit} className="space-y-5 py-2">
           {/* Method Selection Tabs */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <button
               type="button"
               onClick={() => {
@@ -155,7 +175,7 @@ export function PaymentDialog({
               }`}
             >
               <Banknote className="h-5 w-5" />
-              <span>Cash Payment</span>
+              <span>Cash</span>
             </button>
             <button
               type="button"
@@ -170,7 +190,22 @@ export function PaymentDialog({
               }`}
             >
               <CreditCard className="h-5 w-5" />
-              <span>Card Payment</span>
+              <span>Card</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMethod('cheque');
+                setValidationError(null);
+              }}
+              className={`flex items-center justify-center gap-2.5 rounded-lg border p-3 font-semibold text-sm transition-all ${
+                method === 'cheque'
+                  ? 'border-primary bg-primary/10 text-primary ring-2 ring-primary/20'
+                  : 'border-border bg-card hover:bg-muted/50 text-muted-foreground'
+              }`}
+            >
+              <Landmark className="h-5 w-5" />
+              <span>Cheque</span>
             </button>
           </div>
 
@@ -297,6 +332,62 @@ export function PaymentDialog({
                 </div>
               )}
 
+              {validationError && (
+                <p className="text-xs font-medium text-destructive flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  <span>{validationError}</span>
+                </p>
+              )}
+            </div>
+          ) : method === 'cheque' ? (
+            /* Cheque Payment View */
+            <div className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="cheque-no" className="text-xs font-semibold text-muted-foreground">
+                    Cheque Number *
+                  </Label>
+                  <Input
+                    id="cheque-no"
+                    autoFocus
+                    autoComplete="off"
+                    value={chequeNumber}
+                    onChange={(e) => {
+                      setChequeNumber(e.target.value);
+                      setValidationError(null);
+                    }}
+                    className="font-mono h-10"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cheque-bank" className="text-xs font-semibold text-muted-foreground">
+                    Bank
+                  </Label>
+                  <Input
+                    id="cheque-bank"
+                    autoComplete="off"
+                    value={chequeBank}
+                    onChange={(e) => setChequeBank(e.target.value)}
+                    className="h-10"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="cheque-date" className="text-xs font-semibold text-muted-foreground">
+                    Cheque Date
+                  </Label>
+                  <Input
+                    id="cheque-date"
+                    type="date"
+                    value={chequeDate}
+                    onChange={(e) => setChequeDate(e.target.value)}
+                    className="h-10"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                The cheque is taken for the full <strong className="text-foreground">{formatLKR(total)}</strong>.
+                It is recorded as pending until the owner marks it cleared.
+              </p>
               {validationError && (
                 <p className="text-xs font-medium text-destructive flex items-center gap-1">
                   <AlertCircle className="h-3.5 w-3.5" />

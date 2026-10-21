@@ -364,8 +364,11 @@ export function CheckoutTerminal({
 
   // 6. Complete Sale Execution
   const handleConfirmSale = async (payment: {
-    method: 'cash' | 'card';
+    method: 'cash' | 'card' | 'cheque';
     amountTendered?: string;
+    chequeNumber?: string;
+    chequeBank?: string;
+    chequeDate?: string;
   }) => {
     if (cartItems.length === 0) {
       toast.error('Cart cannot be empty');
@@ -381,6 +384,9 @@ export function CheckoutTerminal({
         })),
         paymentMethod: payment.method,
         amountTendered: payment.amountTendered,
+        chequeNumber: payment.chequeNumber,
+        chequeBank: payment.chequeBank,
+        chequeDate: payment.chequeDate,
         discountType: discount.type,
         discountValue: discount.value,
         customerName: customerInfo.name.trim() || undefined,

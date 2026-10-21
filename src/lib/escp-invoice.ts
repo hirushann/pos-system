@@ -240,6 +240,9 @@ function buildTrailer(sale: SaleDetail, shop: ShopProfile, cols: number): Line[]
     plain(`${padEnd(label, rightW - 14)}${padStart(amount, 14)}`);
 
   const left: string[] = [`Payment : ${sale.paymentMethod.toUpperCase()}`];
+  if (sale.paymentMethod === 'Cheque' && sale.chequeNumber) {
+    left.push(`Cheque No: ${toAscii(sale.chequeNumber)}${sale.chequeBank ? ` (${toAscii(sale.chequeBank)})` : ''}`);
+  }
   if (sale.amountTendered !== null) left.push(`Cash Given : Rs. ${formatAmount(sale.amountTendered)}`);
   if (sale.changeGiven !== null) left.push(`Balance    : Rs. ${formatAmount(sale.changeGiven)}`);
   while (left.length < 3) left.push('');

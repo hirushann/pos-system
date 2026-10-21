@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { formatLKR } from '@/src/lib/money';
-import { Receipt, Banknote, CreditCard, TrendingUp, AlertTriangle } from 'lucide-react';
+import { Receipt, Banknote, CreditCard, Landmark, TrendingUp, AlertTriangle } from 'lucide-react';
 import type { SalesSummaryTotals } from '@/src/data/sales';
 
 interface SalesSummaryCardsProps {
@@ -9,7 +9,7 @@ interface SalesSummaryCardsProps {
 
 export function SalesSummaryCards({ summary }: SalesSummaryCardsProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
       {/* Total Sales Count */}
       <div className="rounded-xl border bg-card p-4 shadow-2xs">
         <div className="flex items-center justify-between">
@@ -91,6 +91,26 @@ export function SalesSummaryCards({ summary }: SalesSummaryCardsProps) {
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground">
           {summary.cardCount} card {summary.cardCount === 1 ? 'sale' : 'sales'}
+        </p>
+      </div>
+
+      {/* Cheque Split */}
+      <div className="rounded-xl border bg-card p-4 shadow-2xs">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Cheque Payments
+          </span>
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+            <Landmark className="h-4 w-4" />
+          </div>
+        </div>
+        <div className="mt-2 flex items-baseline gap-2">
+          <span className="font-mono text-xl font-bold tracking-tight tabular-nums text-foreground">
+            {formatLKR(summary.chequeRevenue)}
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          {summary.chequeCount} cheque {summary.chequeCount === 1 ? 'sale' : 'sales'}
         </p>
       </div>
     </div>

@@ -33,6 +33,9 @@ import {
   deletePriceItemOp,
 } from '@/src/lib/supplier-ops';
 import { getInvoiceRows, getPayablesSummary, getSupplierList, getPriceList } from '@/src/data/suppliers';
+import { setSaleChequeStatusOp } from '@/src/lib/sale-cheque';
+import { getSalesSummaryTotals, getSaleDetail } from '@/src/data/sales';
+import { getDailySalesReport } from '@/src/data/reports';
 import { executeAdjustStock } from '@/src/actions/inventory';
 import { executeCreateProduct, executeAddManufacturerBarcode } from '@/src/actions/products';
 import { generateInternalBarcode, isValidInternalBarcode } from '@/src/lib/barcode';
@@ -1224,6 +1227,82 @@ describe('POS System Hardening & Core Transactions (pos_test)', () => {
       expect((await updateSupplierOp(s, { name: 'Renamed', paymentTermsDays: 7, active: false }, TEST_OWNER)).success).toBe(true);
       expect((await deletePriceItemOp(list[0].id, TEST_OWNER)).success).toBe(true);
       expect(await getPriceList(s)).toHaveLength(0);
+    });
+  });
+
+  describe('cheque payments at checkout', () => {
+    const chequeSale = (extra: Record<string, unknown> = {}) =>
+      executeCompleteSale(
+        {
+          items: [{ productId: seed.product1Id, quantity: 1 }],
+          paymentMethod: 'cheque',
+          discountType: 'none',
+          discountValue: '0',
+          chequeNumber: '004455',
+          chequeBank: 'BOC',
+          chequeDate: '2026-11-01',
+          ...extra,
+        },
+        TEST_CASHIER,
+      );
+
+    it('records a cheque sale as pending with its details, no cash tendered', async () => {
+      const res = await chequeSale();
+      expect(res.success).toBe(true);
+      expect(res.data?.paymentMethod).toBe('cheque');
+      expect(res.data?.amountTendered).toBeNull();
+
+      const detail = await getSaleDetail(res.data!.saleId, TEST_OWNER);
+      expect(detail?.paymentMethod).toBe('Cheque');
+      expect(detail?.chequeNumber).toBe('004455');
+      expect(detail?.chequeBank).toBe('BOC');
+      expect(detail?.chequeDate).toBe('2026-11-01');
+      expect(detail?.chequeStatus).toBe('pending');
+    });
+
+    it('requires a cheque number', async () => {
+      const res = await chequeSale({ chequeNumber: '  ' });
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/cheque number/i);
+      const [{ n }] = await db.select({ n: sql<number>`COUNT(*)` }).from(sales);
+      expect(Number(n)).toBe(0);
+    });
+
+    it('is counted as cheque, not card, in summaries and the daily report', async () => {
+      await chequeSale();
+      await executeCompleteSale(
+        { items: [{ productId: seed.product1Id, quantity: 1 }], paymentMethod: 'card', discountType: 'none', discountValue: '0' },
+        TEST_CASHIER,
+      );
+      await executeCompleteSale(
+        { items: [{ productId: seed.product1Id, quantity: 1 }], paymentMethod: 'cash', amountTendered: '99999', discountType: 'none', discountValue: '0' },
+        TEST_CASHIER,
+      );
+
+      const totals = await getSalesSummaryTotals({}, TEST_OWNER);
+      expect(totals.chequeCount).toBe(1);
+      expect(totals.cardCount).toBe(1);
+      expect(totals.cashCount).toBe(1);
+
+      const daily = await getDailySalesReport();
+      expect(daily).toHaveLength(1);
+      expect(daily[0].cheque).toBe('5000.00');
+      expect(daily[0].card).toBe('5000.00');
+      expect(daily[0].cash).toBe('5000.00');
+    });
+
+    it('only the owner can mark a cheque cleared or bounced, and only for cheque sales', async () => {
+      const res = await chequeSale();
+      const id = res.data!.saleId;
+      expect((await setSaleChequeStatusOp(id, 'cleared', TEST_CASHIER)).success).toBe(false);
+      expect((await setSaleChequeStatusOp(id, 'bounced', TEST_OWNER)).success).toBe(true);
+      expect((await getSaleDetail(id, TEST_OWNER))?.chequeStatus).toBe('bounced');
+
+      const cash = await executeCompleteSale(
+        { items: [{ productId: seed.product1Id, quantity: 1 }], paymentMethod: 'cash', amountTendered: '99999', discountType: 'none', discountValue: '0' },
+        TEST_CASHIER,
+      );
+      expect((await setSaleChequeStatusOp(cash.data!.saleId, 'cleared', TEST_OWNER)).success).toBe(false);
     });
   });
 });

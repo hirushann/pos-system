@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
       'Gross Profit (LKR)',
       'Cash Tendered (LKR)',
       'Card Payments (LKR)',
+      'Cheque Payments (LKR)',
     ];
     const lines = [formatRow(headers)];
 
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
     let totalProfit = new Decimal(0);
     let totalCash = new Decimal(0);
     let totalCard = new Decimal(0);
+    let totalCheque = new Decimal(0);
 
     for (const r of rows) {
       lines.push(
@@ -71,6 +73,7 @@ export async function GET(request: NextRequest) {
           r.profit,
           r.cash,
           r.card,
+          r.cheque,
         ]),
       );
 
@@ -80,6 +83,7 @@ export async function GET(request: NextRequest) {
       totalProfit = totalProfit.plus(new Decimal(r.profit || 0));
       totalCash = totalCash.plus(new Decimal(r.cash || 0));
       totalCard = totalCard.plus(new Decimal(r.card || 0));
+      totalCheque = totalCheque.plus(new Decimal(r.cheque || 0));
     }
 
     // Add total row
@@ -92,6 +96,7 @@ export async function GET(request: NextRequest) {
         totalProfit.toFixed(2),
         totalCash.toFixed(2),
         totalCard.toFixed(2),
+        totalCheque.toFixed(2),
       ]),
     );
 

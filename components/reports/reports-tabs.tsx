@@ -28,6 +28,7 @@ import {
   AlertCircle,
   Banknote,
   CreditCard,
+  Landmark,
 } from 'lucide-react';
 
 interface ReportsTabsProps {
@@ -117,6 +118,7 @@ export function ReportsTabs({
                       <TableHead className="text-center">Sales Count</TableHead>
                       <TableHead className="text-right">Cash</TableHead>
                       <TableHead className="text-right">Card</TableHead>
+                      <TableHead className="text-right">Cheque</TableHead>
                       <TableHead className="text-right">Discount</TableHead>
                       <TableHead className="text-right">Gross Profit</TableHead>
                       <TableHead className="text-right">Total Revenue</TableHead>
@@ -141,6 +143,12 @@ export function ReportsTabs({
                           <span className="inline-flex items-center gap-1">
                             <CreditCard className="h-3 w-3 text-blue-600" />
                             {formatLKR(row.card)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums text-muted-foreground">
+                          <span className="inline-flex items-center gap-1">
+                            <Landmark className="h-3 w-3 text-sky-600" />
+                            {formatLKR(row.cheque)}
                           </span>
                         </TableCell>
                         <TableCell className="text-right font-mono tabular-nums text-amber-600 dark:text-amber-400">

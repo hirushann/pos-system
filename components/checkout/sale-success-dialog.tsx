@@ -20,7 +20,8 @@ interface SaleSuccessDialogProps {
     total: string;
     amountTendered?: string | null;
     changeGiven: string | null;
-    paymentMethod: 'cash' | 'card';
+    paymentMethod: 'cash' | 'card' | 'cheque';
+    chequeNumber?: string | null;
   } | null;
   onNewSale: () => void;
 }
@@ -87,6 +88,15 @@ export function SaleSuccessDialog({
               {formatLKR(saleData.total)}
             </span>
           </div>
+
+          {saleData.paymentMethod === 'cheque' && saleData.chequeNumber && (
+            <div className="flex justify-between items-center text-sm text-muted-foreground">
+              <span>Cheque Number:</span>
+              <span className="font-mono text-base font-bold text-foreground tabular-nums">
+                {saleData.chequeNumber}
+              </span>
+            </div>
+          )}
 
           {saleData.paymentMethod === 'cash' && saleData.amountTendered && (
             <div className="flex justify-between items-center text-sm text-muted-foreground">
