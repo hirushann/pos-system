@@ -38,6 +38,8 @@ interface VehicleModelItem {
 interface ProductFiltersProps {
   categories: CategoryItem[];
   brands: BrandItem[];
+  /** Owner only: filter by preferred supplier. */
+  suppliers?: { id: number; name: string }[];
   vehicleMakes: VehicleMakeItem[];
   vehicleModels: VehicleModelItem[];
 }
@@ -45,6 +47,7 @@ interface ProductFiltersProps {
 export function ProductFilters({
   categories,
   brands,
+  suppliers,
   vehicleMakes,
   vehicleModels,
 }: ProductFiltersProps) {
@@ -55,6 +58,7 @@ export function ProductFilters({
   const currentSearch = searchParams.get('q') ?? '';
   const currentCategory = searchParams.get('category') ?? 'all';
   const currentBrand = searchParams.get('brand') ?? 'all';
+  const currentSupplier = searchParams.get('supplier') ?? 'all';
   const currentMake = searchParams.get('make') ?? 'all';
   const currentModel = searchParams.get('model') ?? 'all';
   const currentStock = searchParams.get('stock') ?? 'all';
@@ -209,6 +213,26 @@ export function ProductFilters({
             </SelectContent>
           </Select>
         </div>
+
+        {/* Preferred Supplier Filter (owner only) */}
+        {suppliers && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Supplier</label>
+            <Select value={currentSupplier} onValueChange={(val) => updateFilters({ supplier: val })}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="All Suppliers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Suppliers</SelectItem>
+                {suppliers.map((x) => (
+                  <SelectItem key={x.id} value={x.id.toString()}>
+                    {x.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {/* Vehicle Make Filter */}
         <div>

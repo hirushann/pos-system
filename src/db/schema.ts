@@ -74,6 +74,11 @@ export const products = mysqlTable(
       .notNull()
       .references(() => categories.id),
     brandId: bigint('brand_id', { mode: 'number' }).references(() => brands.id),
+    /** The supplier this part is usually bought from. Information only; any supplier can still be used. */
+    preferredSupplierId: bigint('preferred_supplier_id', { mode: 'number' }).references(
+      () => suppliers.id,
+      { onDelete: 'set null' },
+    ),
     description: text('description'),
     unit: varchar('unit', { length: 255 }).notNull().default('pcs'),
     binLocation: varchar('bin_location', { length: 255 }),
@@ -97,6 +102,7 @@ export const products = mysqlTable(
     index('products_name_idx').on(t.name),
     index('products_category_id_idx').on(t.categoryId),
     index('products_brand_id_idx').on(t.brandId),
+    index('products_preferred_supplier_idx').on(t.preferredSupplierId),
   ],
 );
 

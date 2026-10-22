@@ -5,7 +5,7 @@ import { normalizeUnit } from '@/src/lib/unit';
 /*
  * Product CSV format (one product per row, first row = column names).
  *
- *   sku, name*, part_number*, category*, brand, description, unit, bin_location,
+ *   sku, name*, part_number*, category*, brand, supplier, description, unit, bin_location,
  *   cost_price*, selling_price*, stock, reorder_level, active,
  *   alternate_part_numbers, manufacturer_barcodes, internal_barcode
  *
@@ -26,6 +26,7 @@ export const PRODUCT_CSV_COLUMNS = [
   'part_number',
   'category',
   'brand',
+  'supplier',
   'description',
   'unit',
   'bin_location',
@@ -69,6 +70,10 @@ const ALIASES: Record<string, ProductCsvColumn> = {
   brand_name: 'brand',
   maker: 'brand',
   brand_maker: 'brand',
+  supplier: 'supplier',
+  supplier_name: 'supplier',
+  preferred_supplier: 'supplier',
+  vendor: 'supplier',
   description: 'description',
   notes: 'description',
   details: 'description',
@@ -130,6 +135,8 @@ export interface ParsedProductRow {
   partNumber: string;
   category: string;
   brand: string | null;
+  /** Name of an existing supplier. Blank = leave as it is. */
+  supplier: string | null;
   description: string | null;
   unit: string | null;
   binLocation: string | null;
@@ -292,6 +299,7 @@ export function parseProductCsv(text: string): ParsedProductCsv {
       partNumber: cell(line, 'part_number'),
       category: cell(line, 'category'),
       brand: cell(line, 'brand') || null,
+      supplier: cell(line, 'supplier') || null,
       description: cell(line, 'description') || null,
       unit: cell(line, 'unit') ? normalizeUnit(cell(line, 'unit')) : null,
       binLocation: cell(line, 'bin_location') || null,
@@ -317,6 +325,7 @@ export function parseProductCsv(text: string): ParsedProductCsv {
 
     // Optional text limits
     if (row.brand && row.brand.length > 255) row.errors.push('Brand is longer than 255 characters.');
+    if (row.supplier && row.supplier.length > 255) row.errors.push('Supplier is longer than 255 characters.');
     if (row.unit && row.unit.length > 255) row.errors.push('Unit is longer than 255 characters.');
     if (row.binLocation && row.binLocation.length > 255) row.errors.push('Bin location is longer than 255 characters.');
     if (row.description && row.description.length > 5000) row.errors.push('Description is longer than 5000 characters.');
@@ -371,9 +380,9 @@ export function productCsvTemplate(): string {
   return toCsv([
     [...PRODUCT_CSV_COLUMNS],
     [
-      '', 'Front Brake Pad Set', '04465-12610', 'Brakes', 'Toyota Genuine', 'Fits Axio and Premio', 'set', 'A-04',
+      '', 'Front Brake Pad Set', '04465-12610', 'Brakes', 'Toyota Genuine', '', 'Fits Axio and Premio', 'set', 'A-04',
       '6500', '8900', '10', '3', 'yes', 'oem:04465-02220;FDB1617', '4901234567894;4901234567900', '',
     ],
-    ['', 'Engine Oil 4L', 'MOB-5W30-4L', 'Oils & Fluids', 'Mobil', '', 'pcs', '', '8200', '9800', '24', '6', 'yes', '', '', ''],
+    ['', 'Engine Oil 4L', 'MOB-5W30-4L', 'Oils & Fluids', 'Mobil', '', '', 'pcs', '', '8200', '9800', '24', '6', 'yes', '', '', ''],
   ]);
 }

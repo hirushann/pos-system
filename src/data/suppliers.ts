@@ -193,6 +193,42 @@ export async function getSupplier(id: number): Promise<Supplier | null> {
   return row ?? null;
 }
 
+/** Every supplier (active or not), for choosing a product's preferred supplier. */
+export async function getAllSupplierOptions(): Promise<{ id: number; name: string }[]> {
+  return db.select({ id: suppliers.id, name: suppliers.name }).from(suppliers).orderBy(asc(suppliers.name));
+}
+
+export interface SupplierProductRow {
+  id: number;
+  name: string;
+  partNumber: string;
+  sku: string;
+  unit: string;
+  stockQty: number;
+  reorderLevel: number;
+  costPrice: string;
+  isActive: boolean;
+}
+
+/** Products that name this supplier as their preferred supplier. */
+export async function getSupplierProducts(supplierId: number): Promise<SupplierProductRow[]> {
+  return db
+    .select({
+      id: products.id,
+      name: products.name,
+      partNumber: products.partNumber,
+      sku: products.sku,
+      unit: products.unit,
+      stockQty: products.stockQty,
+      reorderLevel: products.reorderLevel,
+      costPrice: products.costPrice,
+      isActive: products.isActive,
+    })
+    .from(products)
+    .where(eq(products.preferredSupplierId, supplierId))
+    .orderBy(asc(products.name));
+}
+
 export async function getSupplierOptions(): Promise<{ id: number; name: string; paymentTermsDays: number }[]> {
   return db
     .select({ id: suppliers.id, name: suppliers.name, paymentTermsDays: suppliers.paymentTermsDays })
@@ -537,7 +573,8 @@ export interface PurchaseProductOption {
   isActive: boolean;
 }
 
-export async function searchPurchaseProducts(query: string): Promise<PurchaseProductOption[]> {
+/** Products matching the text. When a supplier is given, its preferred products come first. */
+export async function searchPurchaseProducts(query: string, supplierId?: number | null): Promise<PurchaseProductOption[]> {
   const term = query.trim();
   if (term.length < 2) return [];
   const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
@@ -554,6 +591,9 @@ export async function searchPurchaseProducts(query: string): Promise<PurchasePro
     })
     .from(products)
     .where(or(like(products.name, pattern), like(products.partNumber, pattern), like(products.sku, pattern)))
-    .orderBy(asc(products.name))
+    .orderBy(
+      ...(supplierId ? [sql`(${products.preferredSupplierId} = ${supplierId}) DESC`] : []),
+      asc(products.name),
+    )
     .limit(15);
 }

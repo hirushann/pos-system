@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LowStockProductItem } from '@/src/data/inventory';
 import { Printer, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatColomboDate } from '@/src/lib/dates';
 
 interface LowStockTableProps {
@@ -23,18 +24,39 @@ interface LowStockTableProps {
 }
 
 export function LowStockTable({
-  items,
+  items: allItems,
   shopName = 'Jayaweera Logistic & Motors',
   onAdjustProduct,
   isOwner,
 }: LowStockTableProps) {
+  // Owner can narrow the list to one supplier to print a reorder sheet for them
+  const [supplierFilter, setSupplierFilter] = React.useState<string>('all');
+  const supplierOptions = React.useMemo(() => {
+    const map = new Map<number, string>();
+    for (const i of allItems) if (i.supplierId && i.supplierName) map.set(i.supplierId, i.supplierName);
+    return [...map].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [allItems]);
+  const hasUnassigned = allItems.some((i) => !i.supplierId);
+  const items =
+    !isOwner || supplierFilter === 'all'
+      ? allItems
+      : supplierFilter === 'none'
+        ? allItems.filter((i) => !i.supplierId)
+        : allItems.filter((i) => String(i.supplierId) === supplierFilter);
+  const filterLabel =
+    supplierFilter === 'all' || !isOwner
+      ? null
+      : supplierFilter === 'none'
+        ? 'No preferred supplier'
+        : supplierOptions.find(([id]) => String(id) === supplierFilter)?.[1] ?? null;
+
   const handlePrint = () => {
     window.print();
   };
 
   const todayStr = formatColomboDate(new Date());
 
-  if (items.length === 0) {
+  if (allItems.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border bg-card p-12 text-center shadow-2xs">
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -60,6 +82,7 @@ export function LowStockTable({
             <p className="text-sm font-semibold text-gray-700">
               Supplier Reorder Requisition &amp; Low Stock Report
             </p>
+            {filterLabel && <p className="text-sm font-semibold">Supplier: {filterLabel}</p>}
           </div>
           <div className="text-right text-xs text-gray-600">
             <p>Date: {todayStr} (Asia/Colombo)</p>
@@ -86,15 +109,33 @@ export function LowStockTable({
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        {isOwner && supplierOptions.length > 0 && (
+          <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+            <SelectTrigger className="h-8 w-48 text-xs">
+              <SelectValue placeholder="All suppliers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All suppliers</SelectItem>
+              {supplierOptions.map(([id, name]) => (
+                <SelectItem key={id} value={String(id)}>
+                  {name}
+                </SelectItem>
+              ))}
+              {hasUnassigned && <SelectItem value="none">No preferred supplier</SelectItem>}
+            </SelectContent>
+          </Select>
+        )}
         <Button
           onClick={handlePrint}
           variant="outline"
           size="sm"
-          className="gap-2 self-start sm:self-auto"
+          className="gap-2"
         >
           <Printer className="h-4 w-4" />
           <span>Print Supplier Reorder Sheet</span>
         </Button>
+        </div>
       </div>
 
       {/* Low stock table */}
@@ -105,6 +146,7 @@ export function LowStockTable({
               <TableHead className="w-36 font-semibold">Part Number</TableHead>
               <TableHead className="min-w-44 font-semibold">Product Name &amp; SKU</TableHead>
               <TableHead className="w-28 font-semibold">Brand</TableHead>
+              {isOwner && <TableHead className="w-32 font-semibold">Supplier</TableHead>}
               <TableHead className="w-28 font-semibold">Bin Location</TableHead>
               <TableHead className="w-24 text-center font-semibold">Current Stock</TableHead>
               <TableHead className="w-24 text-center font-semibold">Reorder Level</TableHead>
@@ -144,6 +186,11 @@ export function LowStockTable({
                   <TableCell className="align-middle text-xs">
                     {item.brandName || '-'}
                   </TableCell>
+
+                  {/* Supplier (owner) */}
+                  {isOwner && (
+                    <TableCell className="align-middle text-xs">{item.supplierName || '-'}</TableCell>
+                  )}
 
                   {/* Bin Location */}
                   <TableCell className="align-middle font-mono text-xs font-medium">

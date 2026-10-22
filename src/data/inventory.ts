@@ -3,6 +3,7 @@ import {
   products,
   categories,
   brands,
+  suppliers,
   stockMovements,
   sales,
 } from '@/src/db/schema';
@@ -21,6 +22,9 @@ export interface LowStockProductItem {
   reorderLevel: number;
   deficit: number;
   unit: string;
+  /** The supplier this is usually bought from, to build per-supplier reorder sheets. */
+  supplierId: number | null;
+  supplierName: string | null;
 }
 
 export interface StockMovementItem {
@@ -51,10 +55,13 @@ export async function getLowStockProducts(): Promise<LowStockProductItem[]> {
       stockQty: products.stockQty,
       reorderLevel: products.reorderLevel,
       unit: products.unit,
+      supplierId: products.preferredSupplierId,
+      supplierName: suppliers.name,
     })
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
     .leftJoin(brands, eq(products.brandId, brands.id))
+    .leftJoin(suppliers, eq(products.preferredSupplierId, suppliers.id))
     .where(
       sql`${products.isActive} = true AND ${products.stockQty} <= ${products.reorderLevel}`,
     )
@@ -76,6 +83,8 @@ export async function getLowStockProducts(): Promise<LowStockProductItem[]> {
     reorderLevel: r.reorderLevel,
     deficit: Math.max(0, r.reorderLevel - r.stockQty),
     unit: r.unit,
+    supplierId: r.supplierId,
+    supplierName: r.supplierName,
   }));
 }
 

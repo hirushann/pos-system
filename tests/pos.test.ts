@@ -51,6 +51,8 @@ import {
 import { setSaleChequeStatusOp } from '@/src/lib/sale-cheque';
 import { getSalesSummaryTotals, getSaleDetail } from '@/src/data/sales';
 import { getDailySalesReport } from '@/src/data/reports';
+import { getLowStockProducts } from '@/src/data/inventory';
+import { getSupplierProducts, searchPurchaseProducts } from '@/src/data/suppliers';
 import { executeAdjustStock } from '@/src/lib/inventory-ops';
 import { executeCreateProduct, executeAddManufacturerBarcode } from '@/src/lib/products-ops';
 import { generateInternalBarcode, isValidInternalBarcode } from '@/src/lib/barcode';
@@ -1029,7 +1031,7 @@ describe('POS System Hardening & Core Transactions (pos_test)', () => {
 
       const exported = await exportProductsCsv();
       expect(exported.charCodeAt(0)).toBe(0xfeff); // BOM for Excel
-      expect(exported).toContain('sku,name,part_number,category,brand,description,unit,bin_location,cost_price,selling_price,stock,reorder_level,active,alternate_part_numbers,manufacturer_barcodes,internal_barcode');
+      expect(exported).toContain('sku,name,part_number,category,brand,supplier,description,unit,bin_location,cost_price,selling_price,stock,reorder_level,active,alternate_part_numbers,manufacturer_barcodes,internal_barcode');
       expect(exported).toContain('TEST-PAD-01');
       expect(exported).toContain('1500.50');
       expect(exported).toContain('oem:OEM-1;ALT-1');
@@ -1547,6 +1549,102 @@ describe('POS System Hardening & Core Transactions (pos_test)', () => {
       expect(hint.fromSupplier?.unitCost).toBe('3200.00');
       expect(hint.bestOther?.supplierName).toBe('Cheap Co');
       expect(hint.bestOther?.unitCost).toBe('2900.00');
+    });
+  });
+
+  describe('preferred supplier on products', () => {
+    const baseProduct = (categoryId: number, extra: Record<string, unknown> = {}) => ({
+      name: 'Preferred Test Part',
+      partNumber: 'PT-1',
+      categoryId,
+      costPrice: '100.00',
+      price: '150.00',
+      reorderLevel: 5,
+      openingStock: 1,
+      isActive: true,
+      alternatePartNumbers: [],
+      fitments: [],
+      ...extra,
+    });
+    const categoryId = async () => (await db.select().from(categories))[0].id;
+    const newSupplier = async (name: string) => (await createSupplierOp({ name, paymentTermsDays: 0, active: true }, TEST_OWNER)).data!.id;
+
+    it('saves a preferred supplier on create and lists it under that supplier', async () => {
+      const s = await newSupplier('Pref Co');
+      const res = await executeCreateProduct(baseProduct(await categoryId(), { preferredSupplierId: s }) as never, TEST_OWNER);
+      expect(res.success).toBe(true);
+      const [p] = await db.select().from(products).where(eq(products.id, res.data!.id));
+      expect(p.preferredSupplierId).toBe(s);
+
+      const list = await getSupplierProducts(s);
+      expect(list.map((x) => x.id)).toEqual([res.data!.id]);
+    });
+
+    it('a product without a preferred supplier is fine', async () => {
+      const res = await executeCreateProduct(baseProduct(await categoryId()) as never, TEST_OWNER);
+      expect(res.success).toBe(true);
+      const [p] = await db.select().from(products).where(eq(products.id, res.data!.id));
+      expect(p.preferredSupplierId).toBeNull();
+    });
+
+    it('rejects a supplier that does not exist', async () => {
+      const res = await executeCreateProduct(baseProduct(await categoryId(), { preferredSupplierId: 999999 }) as never, TEST_OWNER);
+      expect(res.success).toBe(false);
+    });
+
+    it('deleting a supplier unlinks it from its products instead of failing', async () => {
+      const s = await newSupplier('Gone Co');
+      await db.update(products).set({ preferredSupplierId: s }).where(eq(products.id, seed.product1Id));
+      expect((await deleteSupplierOp(s, TEST_OWNER)).success).toBe(true);
+      const [p] = await db.select().from(products).where(eq(products.id, seed.product1Id));
+      expect(p.preferredSupplierId).toBeNull();
+    });
+
+    it('the low-stock list carries each part\'s preferred supplier', async () => {
+      const s = await newSupplier('Reorder Co');
+      await db.update(products).set({ preferredSupplierId: s }).where(eq(products.id, seed.product2Id)); // stock 1 <= reorder 1
+      const low = await getLowStockProducts();
+      const row = low.find((x) => x.id === seed.product2Id)!;
+      expect(row.supplierId).toBe(s);
+      expect(row.supplierName).toBe('Reorder Co');
+      expect(low.find((x) => x.id === seed.product3Id)!.supplierId).toBeNull();
+    });
+
+    it('invoice product search puts the supplier\'s preferred products first', async () => {
+      const s = await newSupplier('First Co');
+      await db.update(products).set({ preferredSupplierId: s }).where(eq(products.id, seed.product3Id));
+      const plain = await searchPurchaseProducts('Brake');
+      expect(plain[0].id).not.toBe(seed.product3Id); // alphabetical: "Zero Stock Brake Pad" is last
+      const ordered = await searchPurchaseProducts('Brake', s);
+      expect(ordered[0].id).toBe(seed.product3Id);
+    });
+
+    it('CSV: sets the supplier by name, rejects unknown names, leaves blank cells alone and exports it', async () => {
+      const s = await newSupplier('Csv Supplier');
+      const header = 'name,part_number,category,supplier,cost_price,selling_price,stock\n';
+
+      const bad = await previewProductImport(header + 'Part A,CSV-A,Brakes,No Such Supplier,10,20,1\n');
+      expect(bad.rows[0].action).toBe('error');
+      expect(bad.rows[0].errors.join(' ')).toMatch(/does not exist/);
+
+      const ok = await commitProductImport(header + 'Part B,CSV-B,Brakes,csv supplier,10,20,1\n', TEST_OWNER.id);
+      expect(ok.ok).toBe(true);
+      const [created] = await db.select().from(products).where(eq(products.partNumber, 'CSV-B'));
+      expect(created.preferredSupplierId).toBe(s);
+
+      // update with a blank supplier cell keeps it
+      const upd = await commitProductImport(
+        'sku,name,part_number,category,supplier,cost_price,selling_price\n' + `${created.sku},Part B,CSV-B,Brakes,,10,25\n`,
+        TEST_OWNER.id,
+      );
+      expect(upd.ok).toBe(true);
+      const [after] = await db.select().from(products).where(eq(products.id, created.id));
+      expect(after.preferredSupplierId).toBe(s);
+      expect(after.price).toBe('25.00');
+
+      const csv = await exportProductsCsv();
+      expect(csv.split('\n')[0]).toContain('supplier');
+      expect(csv).toContain('Csv Supplier');
     });
   });
 });

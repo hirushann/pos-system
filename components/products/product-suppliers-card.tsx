@@ -6,7 +6,13 @@ import { formatAmount } from '@/src/lib/money';
 import type { ProductSupplierHistory } from '@/src/data/suppliers';
 
 /** Owner-only: who this part was bought from, at what price. Cheapest last price first. */
-export function ProductSuppliersCard({ history }: { history: ProductSupplierHistory[] }) {
+export function ProductSuppliersCard({
+  history,
+  preferred,
+}: {
+  history: ProductSupplierHistory[];
+  preferred?: { id: number; name: string } | null;
+}) {
   return (
     <div className="space-y-3 rounded-xl border bg-card p-4 shadow-2xs">
       <div>
@@ -16,6 +22,16 @@ export function ProductSuppliersCard({ history }: { history: ProductSupplierHist
         </h3>
         <p className="text-xs text-muted-foreground">
           Compare what each supplier charged. Based on supplier invoices that list this product.
+        </p>
+        <p className="mt-1 text-xs">
+          Preferred supplier:{' '}
+          {preferred ? (
+            <Link href={`/suppliers/${preferred.id}`} className="font-medium text-primary hover:underline">
+              {preferred.name}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">none set (choose one on the product&apos;s Edit form)</span>
+          )}
         </p>
       </div>
       {history.length === 0 ? (

@@ -153,6 +153,12 @@ export function ProductTable({
                       <span className="font-mono">SKU: {product.sku}</span>
                       <span>•</span>
                       <span>Unit: {product.unit}</span>
+                      {isOwner && product.preferredSupplierName && (
+                        <>
+                          <span>·</span>
+                          <span>Supplier: {product.preferredSupplierName}</span>
+                        </>
+                      )}
                       {product.fitments.length > 0 && (
                         <Tooltip>
                           <TooltipTrigger asChild>

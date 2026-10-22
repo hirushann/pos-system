@@ -42,6 +42,7 @@ interface ProductsViewProps {
   data: PaginatedProductsResult;
   categories: CategoryItem[];
   brands: BrandItem[];
+  suppliers: { id: number; name: string }[];
   vehicleMakes: VehicleMakeItem[];
   vehicleModels: VehicleModelItem[];
 }
@@ -51,6 +52,7 @@ export function ProductsView({
   data,
   categories,
   brands,
+  suppliers,
   vehicleMakes,
   vehicleModels,
 }: ProductsViewProps) {
@@ -139,6 +141,7 @@ export function ProductsView({
       <ProductFilters
         categories={categories}
         brands={brands}
+        suppliers={isOwner ? suppliers : undefined}
         vehicleMakes={vehicleMakes}
         vehicleModels={vehicleModels}
       />
@@ -163,6 +166,7 @@ export function ProductsView({
           product={editingProduct}
           categories={categories}
           brands={brands}
+          suppliers={suppliers}
           vehicleMakes={vehicleMakes}
           vehicleModels={vehicleModels}
           onOpenMetadata={handleOpenMetadata}

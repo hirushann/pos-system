@@ -8,6 +8,7 @@ import {
   getPriceList,
   getReturns,
   getSupplier,
+  getSupplierProducts,
 } from '@/src/data/suppliers';
 import { formatLKR } from '@/src/lib/money';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,7 @@ import { InvoicesTable } from '@/components/suppliers/invoices-table';
 import { PaymentsTable } from '@/components/suppliers/payments-table';
 import { PriceList } from '@/components/suppliers/price-list';
 import { ReturnsList } from '@/components/suppliers/returns-list';
+import { SupplierProductsTable } from '@/components/suppliers/supplier-products-table';
 import Decimal from 'decimal.js';
 
 export const metadata: Metadata = { title: 'Supplier | Jayaweera Logistic & Motors' };
@@ -30,11 +32,12 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
   const supplier = await getSupplier(id);
   if (!supplier) notFound();
 
-  const [invoices, payments, prices, returns] = await Promise.all([
+  const [invoices, payments, prices, returns, supplierProducts] = await Promise.all([
     getInvoiceRows({ supplierId: id }),
     getPayments({ supplierId: id }),
     getPriceList(id),
     getReturns({ supplierId: id }),
+    getSupplierProducts(id),
   ]);
 
   const sum = (pick: (i: (typeof invoices)[number]) => string, only: (i: (typeof invoices)[number]) => boolean = () => true) =>
@@ -100,6 +103,7 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
         <TabsList>
           <TabsTrigger value="invoices">Invoices ({invoices.length})</TabsTrigger>
           <TabsTrigger value="payments">Payments ({payments.length})</TabsTrigger>
+          <TabsTrigger value="products">Products ({supplierProducts.length})</TabsTrigger>
           <TabsTrigger value="returns">Returns ({returns.length})</TabsTrigger>
           <TabsTrigger value="prices">Price list ({prices.length})</TabsTrigger>
         </TabsList>
@@ -108,6 +112,9 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
         </TabsContent>
         <TabsContent value="payments" className="mt-4">
           <PaymentsTable payments={payments} showSupplier={false} />
+        </TabsContent>
+        <TabsContent value="products" className="mt-4">
+          <SupplierProductsTable products={supplierProducts} />
         </TabsContent>
         <TabsContent value="returns" className="mt-4">
           <ReturnsList returns={returns} />

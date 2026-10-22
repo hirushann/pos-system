@@ -61,6 +61,7 @@ interface ProductFormDialogProps {
   product?: ProductListItem | null;
   categories: CategoryItem[];
   brands: BrandItem[];
+  suppliers: { id: number; name: string }[];
   vehicleMakes: VehicleMakeItem[];
   vehicleModels: VehicleModelItem[];
   onOpenMetadata?: (tab: 'category' | 'brand' | 'make' | 'model') => void;
@@ -83,6 +84,7 @@ interface ProductFormContentProps {
   product?: ProductListItem | null;
   categories: CategoryItem[];
   brands: BrandItem[];
+  suppliers: { id: number; name: string }[];
   vehicleMakes: VehicleMakeItem[];
   vehicleModels: VehicleModelItem[];
   onOpenMetadata?: (tab: 'category' | 'brand' | 'make' | 'model') => void;
@@ -94,6 +96,7 @@ function ProductFormContent({
   product,
   categories,
   brands,
+  suppliers,
   vehicleMakes,
   vehicleModels,
   onOpenMetadata,
@@ -107,6 +110,9 @@ function ProductFormContent({
   const [partNumber, setPartNumber] = React.useState(product ? product.partNumber : '');
   const [categoryId, setCategoryId] = React.useState(
     product ? product.categoryId.toString() : categories[0]?.id ? categories[0].id.toString() : '',
+  );
+  const [supplierId, setSupplierId] = React.useState(
+    product?.preferredSupplierId ? product.preferredSupplierId.toString() : 'none',
   );
   const [brandId, setBrandId] = React.useState(
     product ? (product.brandId ? product.brandId.toString() : 'none') : 'none',
@@ -210,6 +216,7 @@ function ProductFormContent({
     }
 
     const brandIdNum = brandId !== 'none' ? parseInt(brandId, 10) : undefined;
+    const supplierIdNum = supplierId !== 'none' ? parseInt(supplierId, 10) : null;
     const reorderLevelNum = parseInt(reorderLevel, 10) || 0;
     const openingStockNum = parseInt(openingStock, 10) || 0;
 
@@ -239,6 +246,7 @@ function ProductFormContent({
           partNumber: partNumber.trim(),
           categoryId: catIdNum,
           brandId: brandIdNum,
+          preferredSupplierId: supplierIdNum,
           description: description.trim() || null,
           unit: normalizeUnit(unit),
           binLocation: binLocation.trim() || null,
@@ -263,6 +271,7 @@ function ProductFormContent({
           partNumber: partNumber.trim(),
           categoryId: catIdNum,
           brandId: brandIdNum,
+          preferredSupplierId: supplierIdNum,
           description: description.trim() || null,
           unit: normalizeUnit(unit),
           binLocation: binLocation.trim() || null,
@@ -437,6 +446,25 @@ function ProductFormContent({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Preferred supplier */}
+            <div className="space-y-1">
+              <Label htmlFor="prod-supplier">Preferred Supplier</Label>
+              <Select value={supplierId} onValueChange={setSupplierId}>
+                <SelectTrigger id="prod-supplier" className="w-full">
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {suppliers.map((x) => (
+                    <SelectItem key={x.id} value={x.id.toString()}>
+                      {x.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Who you usually buy this from. You can still buy it from anyone.</p>
             </div>
 
             {/* Unit */}
@@ -810,6 +838,7 @@ export function ProductFormDialog({
   product,
   categories,
   brands,
+  suppliers,
   vehicleMakes,
   vehicleModels,
   onOpenMetadata,
@@ -824,6 +853,7 @@ export function ProductFormDialog({
             product={product}
             categories={categories}
             brands={brands}
+            suppliers={suppliers}
             vehicleMakes={vehicleMakes}
             vehicleModels={vehicleModels}
             onOpenMetadata={onOpenMetadata}

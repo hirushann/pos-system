@@ -117,9 +117,9 @@ export async function applySupplierCredit(input: unknown) {
 }
 
 // Read-only helpers for the invoice form (owner only)
-export async function searchPurchaseProductsAction(query: string) {
+export async function searchPurchaseProductsAction(query: string, supplierId?: number | null) {
   await requireOwner();
-  return searchPurchaseProducts(String(query ?? '').slice(0, 100));
+  return searchPurchaseProducts(String(query ?? '').slice(0, 100), supplierId ? Number(supplierId) : null);
 }
 
 export async function getPurchaseHintAction(productId: number, supplierId: number) {

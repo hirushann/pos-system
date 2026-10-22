@@ -30,7 +30,7 @@ export function linesTotal(lines: DraftLine[]): Decimal {
   return lines.reduce((acc, l) => acc.plus(lineTotal(l)), new Decimal(0));
 }
 
-function ProductSearch({ onPick }: { onPick: (p: PurchaseProductOption) => void }) {
+function ProductSearch({ onPick, supplierId }: { onPick: (p: PurchaseProductOption) => void; supplierId: number | null }) {
   const [query, setQuery] = React.useState('');
   const [results, setResults] = React.useState<PurchaseProductOption[]>([]);
   const [open, setOpen] = React.useState(false);
@@ -42,7 +42,7 @@ function ProductSearch({ onPick }: { onPick: (p: PurchaseProductOption) => void 
     }
     let live = true;
     const t = setTimeout(async () => {
-      const res = await searchPurchaseProductsAction(query);
+      const res = await searchPurchaseProductsAction(query, supplierId);
       if (live) {
         setResults(res);
         setOpen(true);
@@ -52,7 +52,7 @@ function ProductSearch({ onPick }: { onPick: (p: PurchaseProductOption) => void 
       live = false;
       clearTimeout(t);
     };
-  }, [query]);
+  }, [query, supplierId]);
 
   return (
     <div className="relative">
@@ -128,7 +128,7 @@ export function InvoiceItemsEditor({
           {!l.product ? (
             <div className="flex items-center gap-2">
               <div className="flex-1">
-                <ProductSearch onPick={(p) => pick(l.key, p)} />
+                <ProductSearch supplierId={supplierId} onPick={(p) => pick(l.key, p)} />
               </div>
               <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => remove(l.key)} aria-label="Remove line">
                 <Trash2 className="h-4 w-4" />

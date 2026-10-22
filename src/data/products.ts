@@ -8,6 +8,7 @@ import {
   productFitments,
   productPartNumbers,
   productBarcodes,
+  suppliers,
 } from '@/src/db/schema';
 import { eq, sql, and, desc, inArray, count } from 'drizzle-orm';
 import Decimal from 'decimal.js';
@@ -23,6 +24,8 @@ export interface ProductFilterParams {
   search?: string;
   categoryId?: number;
   brandId?: number;
+  /** Owner only: products whose preferred supplier is this one. */
+  supplierId?: number;
   makeId?: number;
   modelId?: number;
   stockStatus?: 'all' | 'low' | 'out';
@@ -40,6 +43,9 @@ export interface ProductListItem {
   categoryName: string;
   brandId: number | null;
   brandName: string | null;
+  /** Owner only (null for cashiers). */
+  preferredSupplierId: number | null;
+  preferredSupplierName: string | null;
   description: string | null;
   unit: string;
   binLocation: string | null;
@@ -114,6 +120,11 @@ export async function getPaginatedProducts(
     conditions.push(eq(products.brandId, params.brandId));
   }
 
+  // 3b. Preferred supplier filter (owners only)
+  if (isOwner && params.supplierId && params.supplierId > 0) {
+    conditions.push(eq(products.preferredSupplierId, params.supplierId));
+  }
+
   // 4. Vehicle Make & Model cascading filter
   if (params.modelId && params.modelId > 0) {
     conditions.push(
@@ -169,6 +180,8 @@ export async function getPaginatedProducts(
       categoryName: categories.name,
       brandId: products.brandId,
       brandName: brands.name,
+      preferredSupplierId: products.preferredSupplierId,
+      preferredSupplierName: suppliers.name,
       description: products.description,
       unit: products.unit,
       binLocation: products.binLocation,
@@ -183,6 +196,7 @@ export async function getPaginatedProducts(
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
     .leftJoin(brands, eq(products.brandId, brands.id))
+    .leftJoin(suppliers, eq(products.preferredSupplierId, suppliers.id))
     .where(whereClause)
     .orderBy(desc(products.id))
     .limit(pageSize)
@@ -315,6 +329,8 @@ export async function getPaginatedProducts(
       categoryName: r.categoryName ?? 'Uncategorized',
       brandId: r.brandId,
       brandName: r.brandName,
+      preferredSupplierId: isOwner ? r.preferredSupplierId : null,
+      preferredSupplierName: isOwner ? r.preferredSupplierName : null,
       description: r.description,
       unit: r.unit,
       binLocation: r.binLocation,
@@ -382,6 +398,8 @@ export async function getProductById(
       categoryName: categories.name,
       brandId: products.brandId,
       brandName: brands.name,
+      preferredSupplierId: products.preferredSupplierId,
+      preferredSupplierName: suppliers.name,
       description: products.description,
       unit: products.unit,
       binLocation: products.binLocation,
@@ -396,6 +414,7 @@ export async function getProductById(
     .from(products)
     .leftJoin(categories, eq(products.categoryId, categories.id))
     .leftJoin(brands, eq(products.brandId, brands.id))
+    .leftJoin(suppliers, eq(products.preferredSupplierId, suppliers.id))
     .where(eq(products.id, id))
     .limit(1);
 
@@ -468,6 +487,8 @@ export async function getProductById(
     categoryName: row.categoryName ?? 'Uncategorized',
     brandId: row.brandId,
     brandName: row.brandName,
+    preferredSupplierId: isOwner ? row.preferredSupplierId : null,
+    preferredSupplierName: isOwner ? row.preferredSupplierName : null,
     description: row.description,
     unit: row.unit,
     binLocation: row.binLocation,

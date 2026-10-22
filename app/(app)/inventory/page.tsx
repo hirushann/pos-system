@@ -24,10 +24,12 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
   const params = await searchParams;
   const productId = params.productId ? parseInt(params.productId, 10) : undefined;
 
-  const [lowStockItems, productsForPicker] = await Promise.all([
+  const [rawLowStock, productsForPicker] = await Promise.all([
     getLowStockProducts(),
     getProductsForPicker(),
   ]);
+  // Supplier details are for the owner only
+  const lowStockItems = isOwner ? rawLowStock : rawLowStock.map((i) => ({ ...i, supplierId: null, supplierName: null }));
 
   // If productId is provided, load its history; otherwise if none provided and there are products,
   // we can load movements for productId if defined

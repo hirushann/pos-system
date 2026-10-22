@@ -37,7 +37,16 @@ export default async function ProductDetailPage({
   return (
     <div className="space-y-6">
       <ProductDetailView product={product} isOwner={isOwner} />
-      {supplierHistory && <ProductSuppliersCard history={supplierHistory} />}
+      {supplierHistory && (
+        <ProductSuppliersCard
+          history={supplierHistory}
+          preferred={
+            product.preferredSupplierId && product.preferredSupplierName
+              ? { id: product.preferredSupplierId, name: product.preferredSupplierName }
+              : null
+          }
+        />
+      )}
     </div>
   );
 }
