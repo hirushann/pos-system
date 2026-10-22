@@ -44,6 +44,10 @@ export async function searchProductsForLabels(...args: Parameters<typeof ops.sea
   return ops.searchProductsForLabels(...args);
 }
 
+export async function getPreferredSupplierNames(...args: Parameters<typeof ops.getPreferredSupplierNames>): ReturnType<typeof ops.getPreferredSupplierNames> {
+  return ops.getPreferredSupplierNames(...args);
+}
+
 export async function getInternalBarcode(...args: Parameters<typeof ops.getInternalBarcode>): ReturnType<typeof ops.getInternalBarcode> {
   return ops.getInternalBarcode(...args);
 }

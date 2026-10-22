@@ -16,10 +16,11 @@ import {
   brands,
   vehicleMakes,
   vehicleModels,
+  suppliers,
 } from '@/src/db/schema';
 import { requireUser, assertOwner } from '@/src/lib/auth-guards';
 import { normalizeUnit } from '@/src/lib/unit';
-import { eq, and, sql, count } from 'drizzle-orm';
+import { eq, and, sql, count, inArray } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getDbErrorKind, mapDatabaseError } from '@/src/lib/db-errors';
@@ -706,6 +707,7 @@ export async function searchProductsForLabels(
     price: string;
     internalBarcode: string;
     stockQty: number;
+    supplierName: string | null;
   }>
 > {
   const { user } = await requireUser();
@@ -732,8 +734,23 @@ export async function searchProductsForLabels(
       price: item.price,
       internalBarcode: item.internalBarcode || (await getOrCreateInternalBarcode(item.id)),
       stockQty: item.stockQty,
+      supplierName: item.preferredSupplierName,
     })),
   );
+}
+
+/** Preferred supplier name per product id, for printing on labels (owner only). */
+export async function getPreferredSupplierNames(productIds: number[]): Promise<Record<number, string | null>> {
+  const { user } = await requireUser();
+  assertOwner(user);
+  const ids = [...new Set(productIds.filter((id) => Number.isInteger(id) && id > 0))].slice(0, 200);
+  if (ids.length === 0) return {};
+  const rows = await db
+    .select({ id: products.id, name: suppliers.name })
+    .from(products)
+    .leftJoin(suppliers, eq(products.preferredSupplierId, suppliers.id))
+    .where(inArray(products.id, ids));
+  return Object.fromEntries(rows.map((r) => [r.id, r.name]));
 }
 
 /** Internal barcode for a product, created on the spot if it has none (owner only). */

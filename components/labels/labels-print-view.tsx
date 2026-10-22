@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/table';
 import { BarcodeLabelItem, LabelProductData } from './barcode-label-item';
 import { lookupBarcode } from '@/src/actions/sales';
-import { searchProductsForLabels, getInternalBarcode } from '@/src/actions/products';
+import { searchProductsForLabels, getInternalBarcode, getPreferredSupplierNames } from '@/src/actions/products';
 import { toast } from 'sonner';
 import {
   Printer,
@@ -49,6 +49,7 @@ export function LabelsPrintView({
   );
   const [layout, setLayout] = React.useState<'thermal' | 'a4'>('thermal');
   const [showPrice, setShowPrice] = React.useState<boolean>(true);
+  const [showSupplier, setShowSupplier] = React.useState<boolean>(true);
   const [searchQuery, setSearchQuery] = React.useState<string>('');
   const [isSearching, setIsSearching] = React.useState<boolean>(false);
   const [searchResults, setSearchResults] = React.useState<
@@ -113,6 +114,7 @@ export function LabelsPrintView({
           price: p.price,
           internalBarcode: internalCode,
           stockQty: p.stockQty,
+          supplierName: (await getPreferredSupplierNames([p.id]))[p.id] ?? null,
         };
         setSearchResults([item]);
         setIsSearching(false);
@@ -310,6 +312,18 @@ export function LabelsPrintView({
                 checked={showPrice}
                 onCheckedChange={setShowPrice}
               />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="toggle-supplier" className="text-sm font-medium cursor-pointer">
+                  Show Supplier Name
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Print the product&apos;s preferred supplier (labels without one print no supplier line)
+                </p>
+              </div>
+              <Switch id="toggle-supplier" checked={showSupplier} onCheckedChange={setShowSupplier} />
             </div>
 
             <div className="rounded-lg bg-muted/40 p-2.5 text-xs text-muted-foreground flex items-center gap-2">
@@ -532,6 +546,7 @@ export function LabelsPrintView({
                     product={product}
                     shopName={shopName}
                     showPrice={showPrice}
+                    showSupplier={showSupplier}
                     layout={layout}
                   />
                 </div>
@@ -558,6 +573,7 @@ export function LabelsPrintView({
                     product={product}
                     shopName={shopName}
                     showPrice={showPrice}
+                    showSupplier={showSupplier}
                     layout="thermal"
                   />
                 ))}
@@ -570,6 +586,7 @@ export function LabelsPrintView({
                     product={product}
                     shopName={shopName}
                     showPrice={showPrice}
+                    showSupplier={showSupplier}
                     layout="a4"
                   />
                 ))}

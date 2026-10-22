@@ -10,12 +10,15 @@ export interface LabelProductData {
   partNumber: string;
   price: string;
   internalBarcode: string;
+  /** The product's preferred supplier, printed on the label when enabled. */
+  supplierName?: string | null;
 }
 
 interface BarcodeLabelItemProps {
   product: LabelProductData;
   shopName: string;
   showPrice: boolean;
+  showSupplier?: boolean;
   layout: 'thermal' | 'a4';
 }
 
@@ -23,17 +26,20 @@ export function BarcodeLabelItem({
   product,
   shopName,
   showPrice,
+  showSupplier = false,
   layout,
 }: BarcodeLabelItemProps) {
+  // A supplier line takes a little room, so the barcode is a touch shorter when it is shown
+  const supplier = showSupplier ? product.supplierName?.trim() || null : null;
   const svgString = React.useMemo(() => {
     if (!product.internalBarcode) return '';
     // Generate Code 128 with guaranteed quiet zone padding
-    const height = layout === 'thermal' ? 9 : 7;
+    const height = layout === 'thermal' ? (supplier ? 7.5 : 9) : supplier ? 5.5 : 7;
     return generateBarcodeSvg(product.internalBarcode, {
       height,
       paddingwidth: 10,
     });
-  }, [product.internalBarcode, layout]);
+  }, [product.internalBarcode, layout, supplier]);
 
   if (layout === 'thermal') {
     return (
@@ -61,11 +67,18 @@ export function BarcodeLabelItem({
           )}
         </div>
 
+        {/* Supplier */}
+        {supplier && (
+          <div className="w-full text-center text-[7px] font-semibold text-black truncate px-1.5 leading-none">
+            {supplier}
+          </div>
+        )}
+
         {/* Row 4: Barcode SVG with intact quiet zones */}
         <div className="w-full flex flex-col items-center justify-center px-1">
           <div
             className="w-full overflow-hidden"
-            style={{ height: '9mm' }}
+            style={{ height: supplier ? '7.5mm' : '9mm' }}
             dangerouslySetInnerHTML={{ __html: svgString }}
           />
           {/* Row 5: Digits */}
@@ -103,11 +116,18 @@ export function BarcodeLabelItem({
         )}
       </div>
 
+      {/* Supplier */}
+      {supplier && (
+        <div className="w-full text-center text-[6px] font-semibold text-black truncate px-1 leading-none">
+          Supplier: {supplier}
+        </div>
+      )}
+
       {/* Row 4: Barcode SVG */}
       <div className="w-full flex flex-col items-center justify-center px-0.5 pb-0.5">
         <div
           className="w-full overflow-hidden"
-          style={{ height: '7mm' }}
+          style={{ height: supplier ? '5.5mm' : '7mm' }}
           dangerouslySetInnerHTML={{ __html: svgString }}
         />
         {/* Row 5: Digits */}

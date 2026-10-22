@@ -49,6 +49,7 @@ export default async function LabelsPage({ searchParams }: LabelsPageProps) {
             price: product.price,
             internalBarcode: product.internalBarcode || (await getOrCreateInternalBarcode(product.id)),
             stockQty: product.stockQty,
+            supplierName: product.preferredSupplierName,
           },
           count: isNaN(count) || count < 1 ? 1 : count,
         };
