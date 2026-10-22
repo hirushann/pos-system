@@ -54,6 +54,7 @@ export function SuppliersView({ suppliers }: { suppliers: SupplierListItem[] }) 
                 <TableHead className="text-right">Paid</TableHead>
                 <TableHead className="text-right">Still owed</TableHead>
                 <TableHead>Overdue</TableHead>
+                <TableHead className="text-right">Owes you</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="text-xs">
@@ -90,11 +91,14 @@ export function SuppliersView({ suppliers }: { suppliers: SupplierListItem[] }) 
                       <span className="text-muted-foreground">-</span>
                     )}
                   </TableCell>
+                  <TableCell className="text-right font-mono text-emerald-700 dark:text-emerald-400">
+                    {Number(s.creditDue) > 0 ? formatAmount(s.creditDue) : <span className="text-muted-foreground">-</span>}
+                  </TableCell>
                 </TableRow>
               ))}
               {shown.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-16 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-16 text-center text-muted-foreground">
                     No match.
                   </TableCell>
                 </TableRow>

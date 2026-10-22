@@ -216,7 +216,11 @@ Owner-only. **Suppliers** in the sidebar tracks what the shop owes its suppliers
 - **Payments**: record any number of payments per invoice by cash, bank transfer or cheque. A payment can never be more than the balance owed. Cheques also keep number, bank, cheque date and a status (Pending, Cleared, Bounced).
   - A pending cheque counts as paid, because it has been handed over. If it bounces, mark it Bounced and the amount is owed again.
 - **Price list**: per supplier, the part, their quoted price and the date quoted.
-- Nothing here changes product stock. It is money tracking only.
+- **Products on an invoice (optional):** when adding an invoice you can list the products it delivered. That adds them to stock, sets each product's cost price to what you just paid, and records which supplier it came from. An invoice with no products still works as an amount-only bill and does not touch stock.
+- **Returns:** open an invoice that lists products and click *Return goods*. The goods leave stock and the invoice is credited at the price you paid. You can only return what the invoice delivered (minus earlier returns) and what is still in stock.
+  - If the invoice was unpaid, the balance just goes down. If it was already paid, the supplier owes you the money: record the **refund** when they pay it back, or **use the credit on another invoice** of the same supplier.
+  - Deleting a return puts the goods back in stock. Deleting an invoice takes its goods back out (refused if some were already sold).
+- **Same part from different suppliers:** the product page shows a *Bought from* table (last cost, average, quoted price, quantity bought and returned per supplier, cheapest first). While entering an invoice line you also see what this supplier charged last time and who else sells it cheaper.
 - An invoice with payments cannot be deleted (remove the payments first), and a supplier with invoices cannot be deleted (mark it inactive).
 
 ## Database Backup & Restore

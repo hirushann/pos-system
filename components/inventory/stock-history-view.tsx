@@ -91,6 +91,12 @@ export function StockHistoryView({
             Void Restock
           </Badge>
         );
+      case 'supplier_return':
+        return (
+          <Badge className="bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/30 font-medium">
+            Returned to supplier
+          </Badge>
+        );
       case 'adjustment':
         return (
           <Badge variant="secondary" className="font-medium">

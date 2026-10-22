@@ -6,6 +6,7 @@ import {
   getInvoiceRows,
   getPayments,
   getPriceList,
+  getReturns,
   getSupplier,
 } from '@/src/data/suppliers';
 import { formatLKR } from '@/src/lib/money';
@@ -16,6 +17,7 @@ import { SupplierActions } from '@/components/suppliers/supplier-actions';
 import { InvoicesTable } from '@/components/suppliers/invoices-table';
 import { PaymentsTable } from '@/components/suppliers/payments-table';
 import { PriceList } from '@/components/suppliers/price-list';
+import { ReturnsList } from '@/components/suppliers/returns-list';
 import Decimal from 'decimal.js';
 
 export const metadata: Metadata = { title: 'Supplier | Jayaweera Logistic & Motors' };
@@ -28,10 +30,11 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
   const supplier = await getSupplier(id);
   if (!supplier) notFound();
 
-  const [invoices, payments, prices] = await Promise.all([
+  const [invoices, payments, prices, returns] = await Promise.all([
     getInvoiceRows({ supplierId: id }),
     getPayments({ supplierId: id }),
     getPriceList(id),
+    getReturns({ supplierId: id }),
   ]);
 
   const sum = (pick: (i: (typeof invoices)[number]) => string, only: (i: (typeof invoices)[number]) => boolean = () => true) =>
@@ -41,6 +44,9 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
     { label: 'Total paid', value: formatLKR(sum((i) => i.paid)) },
     { label: 'Still owed', value: formatLKR(sum((i) => i.balance)), strong: true },
     { label: 'Overdue', value: formatLKR(sum((i) => i.balance, (i) => i.overdue)), danger: invoices.some((i) => i.overdue) },
+    ...(Number(sum((i) => i.credit)) > 0
+      ? [{ label: 'Supplier owes you', value: formatLKR(sum((i) => i.credit)), credit: true }]
+      : []),
   ];
 
   return (
@@ -77,12 +83,12 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
         <SupplierActions supplier={supplier} invoices={invoices} />
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className={`grid gap-3 sm:grid-cols-2 ${stats.length === 5 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         {stats.map((s) => (
           <Card key={s.label} className="shadow-xs">
             <CardContent className="p-4">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{s.label}</p>
-              <p className={`text-xl font-bold ${s.danger ? 'text-red-600' : ''} ${s.strong ? 'text-primary' : ''}`}>
+              <p className={`text-xl font-bold ${s.danger ? 'text-red-600' : ''} ${s.strong ? 'text-primary' : ''} ${'credit' in s && s.credit ? 'text-emerald-600' : ''}`}>
                 {s.value}
               </p>
             </CardContent>
@@ -94,6 +100,7 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
         <TabsList>
           <TabsTrigger value="invoices">Invoices ({invoices.length})</TabsTrigger>
           <TabsTrigger value="payments">Payments ({payments.length})</TabsTrigger>
+          <TabsTrigger value="returns">Returns ({returns.length})</TabsTrigger>
           <TabsTrigger value="prices">Price list ({prices.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="invoices" className="mt-4">
@@ -101,6 +108,9 @@ export default async function SupplierPage({ params }: { params: Promise<{ id: s
         </TabsContent>
         <TabsContent value="payments" className="mt-4">
           <PaymentsTable payments={payments} showSupplier={false} />
+        </TabsContent>
+        <TabsContent value="returns" className="mt-4">
+          <ReturnsList returns={returns} />
         </TabsContent>
         <TabsContent value="prices" className="mt-4">
           <PriceList supplierId={id} items={prices} />

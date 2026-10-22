@@ -20,6 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { createSupplierInvoice, updateSupplierInvoice } from '@/src/actions/suppliers';
 import { getColomboDateString } from '@/src/lib/dates';
 import { addDays } from '@/src/lib/supplier-payables';
+import { formatAmount } from '@/src/lib/money';
+import { InvoiceItemsEditor, linesTotal, type DraftLine } from './invoice-items-editor';
 
 export interface SupplierOption {
   id: number;
@@ -55,8 +57,19 @@ export function InvoiceFormDialog({ open, onOpenChange, suppliers, supplierId, i
   const [invoiceDate, setInvoiceDate] = React.useState('');
   const [dueDate, setDueDate] = React.useState('');
   const [dueTouched, setDueTouched] = React.useState(false);
+  const [lines, setLines] = React.useState<DraftLine[]>([]);
+  const [amount, setAmount] = React.useState('');
+  const [amountTouched, setAmountTouched] = React.useState(false);
 
   const terms = (id: string) => suppliers.find((s) => String(s.id) === id)?.paymentTermsDays ?? 0;
+  const itemsTotal = linesTotal(lines);
+  React.useEffect(() => {
+    if (!invoice && !amountTouched && lines.length > 0) {
+      const t = setTimeout(() => setAmount(itemsTotal.greaterThan(0) ? itemsTotal.toFixed(2) : ''), 0);
+      return () => clearTimeout(t);
+    }
+  }, [itemsTotal, amountTouched, lines.length, invoice]);
+
   const suggestDue = (date: string, id: string) => {
     const days = terms(id);
     return date && days > 0 ? addDays(date, days) : '';
@@ -73,6 +86,9 @@ export function InvoiceFormDialog({ open, onOpenChange, suppliers, supplierId, i
         setInvoiceDate(date);
         setDueDate(invoice ? (invoice.dueDate ?? '') : suggestDue(date, id));
         setDueTouched(!!invoice);
+        setLines([]);
+        setAmount(invoice?.amount ?? '');
+        setAmountTouched(!!invoice);
       }, 0);
       return () => clearTimeout(t);
     }
@@ -87,9 +103,20 @@ export function InvoiceFormDialog({ open, onOpenChange, suppliers, supplierId, i
       invoiceNumber: String(f.get('invoiceNumber') ?? ''),
       invoiceDate,
       dueDate: dueDate || null,
-      amount: String(f.get('amount') ?? '').replace(/,/g, ''),
+      amount: amount.replace(/,/g, '').trim(),
       notes: String(f.get('notes') ?? ''),
+      items: invoice
+        ? undefined
+        : lines.map((l) => ({
+            productId: l.product?.id ?? 0,
+            quantity: Number(l.quantity),
+            unitCost: l.unitCost.trim(),
+          })),
     };
+    if (!invoice && lines.some((l) => !l.product)) {
+      setError('Pick a product on every line, or remove the empty line.');
+      return;
+    }
     if (!supplier) {
       setErrors({ supplierId: 'Choose a supplier' });
       return;
@@ -119,7 +146,7 @@ export function InvoiceFormDialog({ open, onOpenChange, suppliers, supplierId, i
 
   return (
     <Dialog open={open} onOpenChange={(v) => !busy && onOpenChange(v)}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{invoice ? 'Edit invoice' : 'Add supplier invoice'}</DialogTitle>
           <DialogDescription>Record a bill you received from a supplier.</DialogDescription>
@@ -161,7 +188,11 @@ export function InvoiceFormDialog({ open, onOpenChange, suppliers, supplierId, i
                 name="amount"
                 inputMode="decimal"
                 placeholder="0.00"
-                defaultValue={invoice?.amount ?? ''}
+                value={amount}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setAmountTouched(true);
+                }}
                 required
                 className="font-mono"
               />
@@ -195,6 +226,30 @@ export function InvoiceFormDialog({ open, onOpenChange, suppliers, supplierId, i
               {field('dueDate')}
             </div>
           </div>
+          {!invoice && (
+            <div className="space-y-2 rounded-lg border p-3">
+              <div>
+                <Label>Products received (optional)</Label>
+                <p className="text-xs text-muted-foreground">
+                  List what this invoice delivered to add it to stock and keep track of which supplier it came from.
+                  Leave empty for an amount-only invoice.
+                </p>
+              </div>
+              <InvoiceItemsEditor
+                supplierId={supplier ? Number(supplier) : null}
+                lines={lines}
+                setLines={setLines}
+                error={errors.items}
+              />
+              {lines.length > 0 && (
+                <div className="flex justify-between border-t pt-2 text-xs">
+                  <span className="text-muted-foreground">Total of products</span>
+                  <span className="font-mono font-semibold">Rs. {formatAmount(itemsTotal)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label htmlFor="inv-notes">Notes</Label>
             <Textarea id="inv-notes" name="notes" rows={2} defaultValue={invoice?.notes ?? ''} />

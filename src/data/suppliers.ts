@@ -2,12 +2,17 @@ import { db } from '@/src/db';
 import {
   suppliers,
   supplierInvoices,
+  supplierInvoiceItems,
   supplierPayments,
   supplierPriceItems,
+  supplierReturns,
+  supplierReturnItems,
+  supplierRefunds,
+  products,
   type Supplier,
   type SupplierPriceItem,
 } from '@/src/db/schema';
-import { and, asc, desc, eq, like, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm';
 import Decimal from 'decimal.js';
 import { getColomboDateString } from '@/src/lib/dates';
 import {
@@ -28,6 +33,11 @@ export interface InvoiceRow {
   amount: string;
   notes: string | null;
   paid: string;
+  /** Invoice amount less returned goods. */
+  net: string;
+  returned: string;
+  /** Money the supplier still owes back (returns paid for, minus refunds and credit used). */
+  credit: string;
   balance: string;
   status: InvoiceStatus;
   overdue: boolean;
@@ -91,8 +101,44 @@ export async function getInvoiceRows(filters: InvoiceFilters = {}): Promise<Invo
     .groupBy(supplierInvoices.id, suppliers.name)
     .orderBy(desc(supplierInvoices.invoiceDate), desc(supplierInvoices.id));
 
+  const ids = rows.map((r) => r.id);
+  const sumBy = async (table: 'returns' | 'refunds' | 'used') => {
+    if (ids.length === 0) return new Map<number, string>();
+    if (table === 'returns') {
+      const res = await db
+        .select({ id: supplierReturns.invoiceId, v: sql<string>`SUM(${supplierReturns.total})` })
+        .from(supplierReturns)
+        .where(inArray(supplierReturns.invoiceId, ids))
+        .groupBy(supplierReturns.invoiceId);
+      return new Map(res.map((x) => [x.id, String(x.v)]));
+    }
+    if (table === 'refunds') {
+      const res = await db
+        .select({ id: supplierRefunds.invoiceId, v: sql<string>`SUM(${supplierRefunds.amount})` })
+        .from(supplierRefunds)
+        .where(inArray(supplierRefunds.invoiceId, ids))
+        .groupBy(supplierRefunds.invoiceId);
+      return new Map(res.map((x) => [x.id, String(x.v)]));
+    }
+    const res = await db
+      .select({ id: supplierPayments.creditFromInvoiceId, v: sql<string>`SUM(${supplierPayments.amount})` })
+      .from(supplierPayments)
+      .where(inArray(supplierPayments.creditFromInvoiceId, ids))
+      .groupBy(supplierPayments.creditFromInvoiceId);
+    return new Map(res.map((x) => [x.id as number, String(x.v)]));
+  };
+  const [returnedBy, refundedBy, usedBy] = await Promise.all([sumBy('returns'), sumBy('refunds'), sumBy('used')]);
+
   const mapped = rows.map((r): InvoiceRow => {
-    const b = computeInvoiceBalance({ amount: r.amount, paid: String(r.paid), dueDate: r.dueDate, today });
+    const b = computeInvoiceBalance({
+      amount: r.amount,
+      paid: String(r.paid),
+      dueDate: r.dueDate,
+      today,
+      returned: returnedBy.get(r.id),
+      refunded: refundedBy.get(r.id),
+      creditUsed: usedBy.get(r.id),
+    });
     return { ...r, ...b };
   });
 
@@ -112,6 +158,8 @@ export interface SupplierListItem extends Supplier {
   outstanding: string;
   overdueAmount: string;
   overdueCount: number;
+  /** Money suppliers owe you back for returned goods. */
+  creditDue: string;
 }
 
 export async function getSupplierList(search?: string | null): Promise<SupplierListItem[]> {
@@ -135,6 +183,7 @@ export async function getSupplierList(search?: string | null): Promise<SupplierL
       outstanding: sum((i) => i.balance).toFixed(2),
       overdueAmount: sum((i) => i.balance, (i) => i.overdue).toFixed(2),
       overdueCount: mine.filter((i) => i.overdue).length,
+      creditDue: sum((i) => i.credit).toFixed(2),
     };
   });
 }
@@ -241,4 +290,270 @@ export async function getPayablesSummary(): Promise<PayablesSummary> {
     pendingChequesAmount: sumPay(pendingCheques),
     pendingChequesCount: pendingCheques.length,
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// Products received, returns and refunds
+// ---------------------------------------------------------------------------
+export interface InvoiceItemRow {
+  id: number;
+  productId: number;
+  productName: string;
+  partNumber: string;
+  quantity: number;
+  unitCost: string;
+  lineTotal: string;
+  returnedQty: number;
+  returnableQty: number;
+}
+
+export async function getInvoiceItems(invoiceId: number): Promise<InvoiceItemRow[]> {
+  const rows = await db
+    .select({
+      id: supplierInvoiceItems.id,
+      productId: supplierInvoiceItems.productId,
+      productName: products.name,
+      partNumber: products.partNumber,
+      quantity: supplierInvoiceItems.quantity,
+      unitCost: supplierInvoiceItems.unitCost,
+      lineTotal: supplierInvoiceItems.lineTotal,
+    })
+    .from(supplierInvoiceItems)
+    .innerJoin(products, eq(products.id, supplierInvoiceItems.productId))
+    .where(eq(supplierInvoiceItems.invoiceId, invoiceId))
+    .orderBy(asc(supplierInvoiceItems.id));
+  if (rows.length === 0) return [];
+
+  const returned = await db
+    .select({ id: supplierReturnItems.invoiceItemId, q: sql<number>`SUM(${supplierReturnItems.quantity})` })
+    .from(supplierReturnItems)
+    .where(inArray(supplierReturnItems.invoiceItemId, rows.map((r) => r.id)))
+    .groupBy(supplierReturnItems.invoiceItemId);
+  const map = new Map(returned.map((r) => [r.id, Number(r.q)]));
+  return rows.map((r) => ({ ...r, returnedQty: map.get(r.id) ?? 0, returnableQty: r.quantity - (map.get(r.id) ?? 0) }));
+}
+
+export interface ReturnRow {
+  id: number;
+  invoiceId: number;
+  invoiceNumber: string;
+  supplierId: number;
+  supplierName: string;
+  returnDate: string;
+  creditNoteNumber: string | null;
+  reason: string | null;
+  total: string;
+  items: { productName: string; partNumber: string; quantity: number; unitCost: string; lineTotal: string }[];
+}
+
+export async function getReturns(filter: { supplierId?: number; invoiceId?: number } = {}): Promise<ReturnRow[]> {
+  const conditions = [];
+  if (filter.supplierId) conditions.push(eq(supplierReturns.supplierId, filter.supplierId));
+  if (filter.invoiceId) conditions.push(eq(supplierReturns.invoiceId, filter.invoiceId));
+  const rows = await db
+    .select({
+      id: supplierReturns.id,
+      invoiceId: supplierReturns.invoiceId,
+      invoiceNumber: supplierInvoices.invoiceNumber,
+      supplierId: supplierReturns.supplierId,
+      supplierName: suppliers.name,
+      returnDate: supplierReturns.returnDate,
+      creditNoteNumber: supplierReturns.creditNoteNumber,
+      reason: supplierReturns.reason,
+      total: supplierReturns.total,
+    })
+    .from(supplierReturns)
+    .innerJoin(supplierInvoices, eq(supplierInvoices.id, supplierReturns.invoiceId))
+    .innerJoin(suppliers, eq(suppliers.id, supplierReturns.supplierId))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(supplierReturns.returnDate), desc(supplierReturns.id))
+    .limit(300);
+  if (rows.length === 0) return [];
+
+  const items = await db
+    .select({
+      returnId: supplierReturnItems.returnId,
+      productName: products.name,
+      partNumber: products.partNumber,
+      quantity: supplierReturnItems.quantity,
+      unitCost: supplierReturnItems.unitCost,
+      lineTotal: supplierReturnItems.lineTotal,
+    })
+    .from(supplierReturnItems)
+    .innerJoin(products, eq(products.id, supplierReturnItems.productId))
+    .where(inArray(supplierReturnItems.returnId, rows.map((r) => r.id)))
+    .orderBy(asc(supplierReturnItems.id));
+  return rows.map((r) => ({ ...r, items: items.filter((i) => i.returnId === r.id) }));
+}
+
+export interface RefundRow {
+  id: number;
+  invoiceId: number;
+  refundDate: string;
+  amount: string;
+  method: 'cash' | 'bank_transfer' | 'cheque';
+  reference: string | null;
+  notes: string | null;
+}
+
+export async function getRefunds(invoiceId: number): Promise<RefundRow[]> {
+  const rows = await db
+    .select({
+      id: supplierRefunds.id,
+      invoiceId: supplierRefunds.invoiceId,
+      refundDate: supplierRefunds.refundDate,
+      amount: supplierRefunds.amount,
+      method: supplierRefunds.method,
+      reference: supplierRefunds.reference,
+      notes: supplierRefunds.notes,
+    })
+    .from(supplierRefunds)
+    .where(eq(supplierRefunds.invoiceId, invoiceId))
+    .orderBy(desc(supplierRefunds.refundDate), desc(supplierRefunds.id));
+  return rows as RefundRow[];
+}
+
+/** Open invoices of a supplier that credit can be applied to. */
+export async function getOpenInvoicesForSupplier(supplierId: number): Promise<InvoiceRow[]> {
+  return getInvoiceRows({ supplierId, status: 'open' });
+}
+
+// ---------------------------------------------------------------------------
+// Same product, different suppliers
+// ---------------------------------------------------------------------------
+export interface ProductSupplierHistory {
+  supplierId: number;
+  supplierName: string;
+  invoices: number;
+  qtyBought: number;
+  qtyReturned: number;
+  averageCost: string;
+  lastUnitCost: string;
+  lastDate: string;
+  /** Price this supplier quoted in their price list for the same part number, if any. */
+  quotedPrice: string | null;
+  quotedDate: string | null;
+}
+
+export async function getProductSupplierHistory(productId: number): Promise<ProductSupplierHistory[]> {
+  const [product] = await db.select({ partNumber: products.partNumber }).from(products).where(eq(products.id, productId));
+  if (!product) return [];
+
+  const lines = await db
+    .select({
+      supplierId: suppliers.id,
+      supplierName: suppliers.name,
+      invoiceId: supplierInvoices.id,
+      invoiceDate: supplierInvoices.invoiceDate,
+      quantity: supplierInvoiceItems.quantity,
+      unitCost: supplierInvoiceItems.unitCost,
+      lineTotal: supplierInvoiceItems.lineTotal,
+      itemId: supplierInvoiceItems.id,
+    })
+    .from(supplierInvoiceItems)
+    .innerJoin(supplierInvoices, eq(supplierInvoices.id, supplierInvoiceItems.invoiceId))
+    .innerJoin(suppliers, eq(suppliers.id, supplierInvoices.supplierId))
+    .where(eq(supplierInvoiceItems.productId, productId))
+    .orderBy(desc(supplierInvoices.invoiceDate), desc(supplierInvoiceItems.id));
+  if (lines.length === 0) return [];
+
+  const returned = await db
+    .select({ supplierId: supplierInvoices.supplierId, q: sql<number>`SUM(${supplierReturnItems.quantity})` })
+    .from(supplierReturnItems)
+    .innerJoin(supplierInvoiceItems, eq(supplierInvoiceItems.id, supplierReturnItems.invoiceItemId))
+    .innerJoin(supplierInvoices, eq(supplierInvoices.id, supplierInvoiceItems.invoiceId))
+    .where(eq(supplierReturnItems.productId, productId))
+    .groupBy(supplierInvoices.supplierId);
+  const returnedBy = new Map(returned.map((r) => [r.supplierId, Number(r.q)]));
+
+  const quotes = await db
+    .select()
+    .from(supplierPriceItems)
+    .where(sql`LOWER(${supplierPriceItems.partNumber}) = LOWER(${product.partNumber})`);
+
+  const bySupplier = new Map<number, ProductSupplierHistory>();
+  const spend = new Map<number, Decimal>();
+  const invoiceSet = new Map<number, Set<number>>();
+  for (const l of lines) {
+    // lines are newest first, so the first one seen per supplier is the latest purchase
+    if (!bySupplier.has(l.supplierId)) {
+      const quote = quotes.find((q) => q.supplierId === l.supplierId);
+      bySupplier.set(l.supplierId, {
+        supplierId: l.supplierId,
+        supplierName: l.supplierName,
+        invoices: 0,
+        qtyBought: 0,
+        qtyReturned: returnedBy.get(l.supplierId) ?? 0,
+        averageCost: '0.00',
+        lastUnitCost: l.unitCost,
+        lastDate: l.invoiceDate,
+        quotedPrice: quote?.unitPrice ?? null,
+        quotedDate: quote?.priceDate ?? null,
+      });
+      spend.set(l.supplierId, new Decimal(0));
+      invoiceSet.set(l.supplierId, new Set());
+    }
+    const row = bySupplier.get(l.supplierId)!;
+    row.qtyBought += l.quantity;
+    spend.set(l.supplierId, spend.get(l.supplierId)!.plus(l.lineTotal));
+    invoiceSet.get(l.supplierId)!.add(l.invoiceId);
+  }
+  for (const [id, row] of bySupplier) {
+    row.invoices = invoiceSet.get(id)!.size;
+    row.averageCost = row.qtyBought > 0 ? spend.get(id)!.dividedBy(row.qtyBought).toFixed(2) : '0.00';
+  }
+  return [...bySupplier.values()].sort((a, b) => Number(a.lastUnitCost) - Number(b.lastUnitCost));
+}
+
+export interface PurchaseHint {
+  fromSupplier: { unitCost: string; date: string } | null;
+  bestOther: { supplierName: string; unitCost: string; date: string } | null;
+  currentCost: string;
+}
+
+/** While entering an invoice line: what this supplier charged last time and who else sells it cheaper. */
+export async function getPurchaseHint(productId: number, supplierId: number): Promise<PurchaseHint> {
+  const [product] = await db.select({ costPrice: products.costPrice }).from(products).where(eq(products.id, productId));
+  const history = await getProductSupplierHistory(productId);
+  const mine = history.find((h) => h.supplierId === supplierId);
+  const others = history.filter((h) => h.supplierId !== supplierId);
+  const best = others.length ? others[0] : null; // sorted cheapest last cost first
+  return {
+    fromSupplier: mine ? { unitCost: mine.lastUnitCost, date: mine.lastDate } : null,
+    bestOther: best ? { supplierName: best.supplierName, unitCost: best.lastUnitCost, date: best.lastDate } : null,
+    currentCost: product?.costPrice ?? '0.00',
+  };
+}
+
+export interface PurchaseProductOption {
+  id: number;
+  name: string;
+  partNumber: string;
+  sku: string;
+  stockQty: number;
+  unit: string;
+  costPrice: string;
+  isActive: boolean;
+}
+
+export async function searchPurchaseProducts(query: string): Promise<PurchaseProductOption[]> {
+  const term = query.trim();
+  if (term.length < 2) return [];
+  const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+  return db
+    .select({
+      id: products.id,
+      name: products.name,
+      partNumber: products.partNumber,
+      sku: products.sku,
+      stockQty: products.stockQty,
+      unit: products.unit,
+      costPrice: products.costPrice,
+      isActive: products.isActive,
+    })
+    .from(products)
+    .where(or(like(products.name, pattern), like(products.partNumber, pattern), like(products.sku, pattern)))
+    .orderBy(asc(products.name))
+    .limit(15);
 }

@@ -44,6 +44,10 @@ export async function resetTestDatabase(): Promise<TestSeedData> {
   // for tables referenced by foreign keys, so switch the checks off around it.
   await db.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
   for (const table of [
+    'supplier_return_items',
+    'supplier_returns',
+    'supplier_refunds',
+    'supplier_invoice_items',
     'supplier_payments',
     'supplier_invoices',
     'supplier_price_items',

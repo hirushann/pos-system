@@ -12,6 +12,7 @@ import {
   unique,
   uniqueIndex,
   date,
+  type AnyMySqlColumn,
 } from 'drizzle-orm/mysql-core';
 import { ts, nowSql } from './columns';
 import { user } from './auth-schema';
@@ -292,7 +293,7 @@ export const stockMovements = mysqlTable(
     check('stock_movements_qty_after_check', sql`${t.qtyAfter} >= 0`),
     check(
       'stock_movements_reason_check',
-      sql`${t.reason} IN ('opening', 'sale', 'void', 'received', 'adjustment')`,
+      sql`${t.reason} IN ('opening', 'sale', 'void', 'received', 'adjustment', 'supplier_return')`,
     ),
     index('stock_movements_product_id_idx').on(t.productId),
     index('stock_movements_sale_id_idx').on(t.saleId),
@@ -399,19 +400,125 @@ export const supplierPayments = mysqlTable(
     chequeDate: date('cheque_date', { mode: 'string' }),
     /** pending | cleared | bounced. A bounced cheque no longer counts as paid. */
     chequeStatus: varchar('cheque_status', { length: 16 }),
+    /** For method 'credit': the invoice whose refundable credit pays this one. */
+    creditFromInvoiceId: bigint('credit_from_invoice_id', { mode: 'number' }).references(
+      (): AnyMySqlColumn => supplierInvoices.id,
+    ),
     notes: text('notes'),
     createdBy: varchar('created_by', { length: 255 }).references(() => user.id),
     createdAt: ts('created_at').notNull().default(nowSql),
   },
   (t) => [
     check('supplier_payments_amount_check', sql`${t.amount} > 0`),
-    check('supplier_payments_method_check', sql`${t.method} IN ('cash', 'bank_transfer', 'cheque')`),
+    check('supplier_payments_method_check', sql`${t.method} IN ('cash', 'bank_transfer', 'cheque', 'credit')`),
     check(
       'supplier_payments_cheque_check',
       sql`(${t.method} = 'cheque') = (${t.chequeStatus} IS NOT NULL) AND (${t.chequeStatus} IS NULL OR ${t.chequeStatus} IN ('pending', 'cleared', 'bounced'))`,
     ),
+    check('supplier_payments_credit_check', sql`(${t.method} = 'credit') = (${t.creditFromInvoiceId} IS NOT NULL)`),
     index('supplier_payments_invoice_id_idx').on(t.invoiceId),
+    index('supplier_payments_credit_from_idx').on(t.creditFromInvoiceId),
     index('supplier_payments_date_idx').on(t.paymentDate),
+  ],
+);
+
+// Products received on a supplier invoice (optional: an invoice can also be amount-only).
+export const supplierInvoiceItems = mysqlTable(
+  'supplier_invoice_items',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    invoiceId: bigint('invoice_id', { mode: 'number' })
+      .notNull()
+      .references(() => supplierInvoices.id, { onDelete: 'cascade' }),
+    productId: bigint('product_id', { mode: 'number' })
+      .notNull()
+      .references(() => products.id),
+    quantity: int('quantity').notNull(),
+    unitCost: decimal('unit_cost', { precision: 12, scale: 2 }).notNull(),
+    lineTotal: decimal('line_total', { precision: 12, scale: 2 }).notNull(),
+    createdAt: ts('created_at').notNull().default(nowSql),
+  },
+  (t) => [
+    check('supplier_invoice_items_quantity_check', sql`${t.quantity} > 0`),
+    check('supplier_invoice_items_unit_cost_check', sql`${t.unitCost} >= 0`),
+    check('supplier_invoice_items_line_total_check', sql`${t.lineTotal} = (${t.quantity} * ${t.unitCost})`),
+    index('supplier_invoice_items_invoice_id_idx').on(t.invoiceId),
+    index('supplier_invoice_items_product_id_idx').on(t.productId),
+  ],
+);
+
+// Products sent back to a supplier. Gives the shop a credit against that invoice.
+export const supplierReturns = mysqlTable(
+  'supplier_returns',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    supplierId: bigint('supplier_id', { mode: 'number' })
+      .notNull()
+      .references(() => suppliers.id),
+    invoiceId: bigint('invoice_id', { mode: 'number' })
+      .notNull()
+      .references(() => supplierInvoices.id),
+    returnDate: date('return_date', { mode: 'string' }).notNull(),
+    /** The supplier's own credit note number, if they gave one. */
+    creditNoteNumber: varchar('credit_note_number', { length: 255 }),
+    reason: text('reason'),
+    total: decimal('total', { precision: 12, scale: 2 }).notNull(),
+    createdBy: varchar('created_by', { length: 255 }).references(() => user.id),
+    createdAt: ts('created_at').notNull().default(nowSql),
+  },
+  (t) => [
+    check('supplier_returns_total_check', sql`${t.total} > 0`),
+    index('supplier_returns_supplier_id_idx').on(t.supplierId),
+    index('supplier_returns_invoice_id_idx').on(t.invoiceId),
+  ],
+);
+
+export const supplierReturnItems = mysqlTable(
+  'supplier_return_items',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    returnId: bigint('return_id', { mode: 'number' })
+      .notNull()
+      .references(() => supplierReturns.id, { onDelete: 'cascade' }),
+    invoiceItemId: bigint('invoice_item_id', { mode: 'number' })
+      .notNull()
+      .references(() => supplierInvoiceItems.id),
+    productId: bigint('product_id', { mode: 'number' })
+      .notNull()
+      .references(() => products.id),
+    quantity: int('quantity').notNull(),
+    unitCost: decimal('unit_cost', { precision: 12, scale: 2 }).notNull(),
+    lineTotal: decimal('line_total', { precision: 12, scale: 2 }).notNull(),
+  },
+  (t) => [
+    check('supplier_return_items_quantity_check', sql`${t.quantity} > 0`),
+    check('supplier_return_items_line_total_check', sql`${t.lineTotal} = (${t.quantity} * ${t.unitCost})`),
+    index('supplier_return_items_return_id_idx').on(t.returnId),
+    index('supplier_return_items_invoice_item_idx').on(t.invoiceItemId),
+  ],
+);
+
+// Money the supplier actually paid back (or credit is applied to another invoice via a
+// 'credit' payment on that invoice, see supplier_payments.credit_from_invoice_id).
+export const supplierRefunds = mysqlTable(
+  'supplier_refunds',
+  {
+    id: bigint('id', { mode: 'number' }).primaryKey().autoincrement(),
+    invoiceId: bigint('invoice_id', { mode: 'number' })
+      .notNull()
+      .references(() => supplierInvoices.id),
+    refundDate: date('refund_date', { mode: 'string' }).notNull(),
+    amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
+    method: varchar('method', { length: 32 }).notNull(), // cash | bank_transfer | cheque
+    reference: varchar('reference', { length: 255 }),
+    notes: text('notes'),
+    createdBy: varchar('created_by', { length: 255 }).references(() => user.id),
+    createdAt: ts('created_at').notNull().default(nowSql),
+  },
+  (t) => [
+    check('supplier_refunds_amount_check', sql`${t.amount} > 0`),
+    check('supplier_refunds_method_check', sql`${t.method} IN ('cash', 'bank_transfer', 'cheque')`),
+    index('supplier_refunds_invoice_id_idx').on(t.invoiceId),
   ],
 );
 
@@ -594,3 +701,8 @@ export type Supplier = typeof suppliers.$inferSelect;
 export type SupplierInvoice = typeof supplierInvoices.$inferSelect;
 export type SupplierPayment = typeof supplierPayments.$inferSelect;
 export type SupplierPriceItem = typeof supplierPriceItems.$inferSelect;
+
+export type SupplierInvoiceItem = typeof supplierInvoiceItems.$inferSelect;
+export type SupplierReturn = typeof supplierReturns.$inferSelect;
+export type SupplierReturnItem = typeof supplierReturnItems.$inferSelect;
+export type SupplierRefund = typeof supplierRefunds.$inferSelect;

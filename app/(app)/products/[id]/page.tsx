@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import { requireUser } from '@/src/lib/auth-guards';
 import { getProductById } from '@/src/data/products';
 import { ProductDetailView } from '@/components/products/product-detail-view';
+import { ProductSuppliersCard } from '@/components/products/product-suppliers-card';
+import { getProductSupplierHistory } from '@/src/data/suppliers';
 
 export const metadata: Metadata = {
   title: 'Product Details | Jayaweera Logistic & Motors',
@@ -30,5 +32,12 @@ export default async function ProductDetailPage({
     notFound();
   }
 
-  return <ProductDetailView product={product} isOwner={isOwner} />;
+  const supplierHistory = isOwner ? await getProductSupplierHistory(productId) : null;
+
+  return (
+    <div className="space-y-6">
+      <ProductDetailView product={product} isOwner={isOwner} />
+      {supplierHistory && <ProductSuppliersCard history={supplierHistory} />}
+    </div>
+  );
 }

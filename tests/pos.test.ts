@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { db } from '@/src/db';
 import {
+  supplierPayments,
+  supplierReturns,
   products,
   sales,
   saleItems,
@@ -31,8 +33,21 @@ import {
   deletePaymentOp,
   savePriceItemOp,
   deletePriceItemOp,
+  createReturnOp,
+  deleteReturnOp,
+  recordRefundOp,
+  deleteRefundOp,
+  applyCreditOp,
 } from '@/src/lib/supplier-ops';
-import { getInvoiceRows, getPayablesSummary, getSupplierList, getPriceList } from '@/src/data/suppliers';
+import {
+  getInvoiceRows,
+  getPayablesSummary,
+  getSupplierList,
+  getPriceList,
+  getInvoiceItems,
+  getProductSupplierHistory,
+  getPurchaseHint,
+} from '@/src/data/suppliers';
 import { setSaleChequeStatusOp } from '@/src/lib/sale-cheque';
 import { getSalesSummaryTotals, getSaleDetail } from '@/src/data/sales';
 import { getDailySalesReport } from '@/src/data/reports';
@@ -1303,6 +1318,235 @@ describe('POS System Hardening & Core Transactions (pos_test)', () => {
         TEST_CASHIER,
       );
       expect((await setSaleChequeStatusOp(cash.data!.saleId, 'cleared', TEST_OWNER)).success).toBe(false);
+    });
+  });
+
+  describe('supplier stock, returns and credit', () => {
+    const today = new Date().toISOString().slice(0, 10);
+
+    async function supplier(name: string) {
+      const r = await createSupplierOp({ name, paymentTermsDays: 0, active: true }, TEST_OWNER);
+      return r.data!.id;
+    }
+    async function invoiceWithItems(
+      supplierId: number,
+      number: string,
+      items: { productId: number; quantity: number; unitCost: string }[],
+      amount?: string,
+    ) {
+      const total = items.reduce((n, i) => n + i.quantity * Number(i.unitCost), 0).toFixed(2);
+      const r = await createInvoiceOp(
+        { supplierId, invoiceNumber: number, invoiceDate: '2026-10-01', amount: amount ?? total, items },
+        TEST_OWNER,
+      );
+      expect(r.success).toBe(true);
+      return r.data!.id;
+    }
+    const stockOf = async (id: number) => (await db.select().from(products).where(eq(products.id, id)))[0];
+    const cash = (invoiceId: number, amount: string) => ({ invoiceId, paymentDate: today, amount, method: 'cash' as const });
+    const retInput = (invoiceId: number, itemId: number, quantity: number) => ({
+      invoiceId,
+      returnDate: today,
+      items: [{ invoiceItemId: itemId, quantity }],
+    });
+
+    it('receiving an invoice with products adds stock, sets the cost price and logs the movement', async () => {
+      const s = await supplier('Lanka Parts');
+      await invoiceWithItems(s, 'INV-A', [{ productId: seed.product1Id, quantity: 5, unitCost: '3300.50' }]);
+
+      const p = await stockOf(seed.product1Id);
+      expect(p.stockQty).toBe(15);
+      expect(p.costPrice).toBe('3300.50');
+      const [m] = await db.select().from(stockMovements).where(eq(stockMovements.productId, seed.product1Id));
+      expect(m.reason).toBe('received');
+      expect(m.changeQty).toBe(5);
+      expect(m.qtyAfter).toBe(15);
+      expect(m.note).toMatch(/INV-A/);
+    });
+
+    it('an amount-only invoice still works and does not touch stock', async () => {
+      const s = await supplier('Plain');
+      const r = await createInvoiceOp({ supplierId: s, invoiceNumber: 'P1', invoiceDate: today, amount: '1000' }, TEST_OWNER);
+      expect(r.success).toBe(true);
+      expect((await stockOf(seed.product1Id)).stockQty).toBe(10);
+    });
+
+    it('a failed invoice adds nothing: no invoice, no stock', async () => {
+      const s = await supplier('Atomic');
+      const r = await createInvoiceOp(
+        { supplierId: s, invoiceNumber: 'X', invoiceDate: today, amount: '10', items: [{ productId: 999999, quantity: 1, unitCost: '5' }] },
+        TEST_OWNER,
+      );
+      expect(r.success).toBe(false);
+      expect(await getInvoiceRows()).toHaveLength(0);
+    });
+
+    it('a return takes stock out and lowers what is owed on an unpaid invoice', async () => {
+      const s = await supplier('Returner');
+      const inv = await invoiceWithItems(s, 'R1', [{ productId: seed.product1Id, quantity: 4, unitCost: '1000' }]);
+      const [line] = await getInvoiceItems(inv);
+
+      const r = await createReturnOp(retInput(inv, line.id, 3), TEST_OWNER);
+      expect(r.success).toBe(true);
+      expect(r.data?.total).toBe('3000.00');
+
+      expect((await stockOf(seed.product1Id)).stockQty).toBe(11); // 10 + 4 - 3
+      const [row] = await getInvoiceRows();
+      expect(row.net).toBe('1000.00');
+      expect(row.balance).toBe('1000.00');
+      expect(row.credit).toBe('0.00');
+      const moves = await db.select().from(stockMovements).where(eq(stockMovements.reason, 'supplier_return'));
+      expect(moves).toHaveLength(1);
+      expect(moves[0].changeQty).toBe(-3);
+
+      const items = await getInvoiceItems(inv);
+      expect(items[0].returnedQty).toBe(3);
+      expect(items[0].returnableQty).toBe(1);
+    });
+
+    it('cannot return more than was delivered, counting earlier returns', async () => {
+      const s = await supplier('Limit');
+      const inv = await invoiceWithItems(s, 'L1', [{ productId: seed.product1Id, quantity: 4, unitCost: '100' }]);
+      const [line] = await getInvoiceItems(inv);
+      expect((await createReturnOp(retInput(inv, line.id, 5), TEST_OWNER)).success).toBe(false);
+      expect((await createReturnOp(retInput(inv, line.id, 3), TEST_OWNER)).success).toBe(true);
+      expect((await createReturnOp(retInput(inv, line.id, 2), TEST_OWNER)).success).toBe(false);
+      expect((await createReturnOp(retInput(inv, line.id, 1), TEST_OWNER)).success).toBe(true);
+    });
+
+    it('two simultaneous returns of the same goods cannot exceed what was delivered', async () => {
+      const s = await supplier('Race');
+      const inv = await invoiceWithItems(s, 'RC', [{ productId: seed.product1Id, quantity: 4, unitCost: '100' }]);
+      const [line] = await getInvoiceItems(inv);
+      const results = await Promise.all([
+        createReturnOp(retInput(inv, line.id, 3), TEST_OWNER),
+        createReturnOp(retInput(inv, line.id, 3), TEST_OWNER),
+      ]);
+      expect(results.filter((r) => r.success)).toHaveLength(1);
+      expect((await getInvoiceItems(inv))[0].returnedQty).toBe(3);
+    });
+
+    it('cannot return goods that were already sold', async () => {
+      const s = await supplier('Sold');
+      // product2 has 1 in stock; the invoice delivers 2 more (3 in stock), then 3 are sold
+      const inv = await invoiceWithItems(s, 'S1', [{ productId: seed.product2Id, quantity: 2, unitCost: '500' }]);
+      await db.update(products).set({ stockQty: 1 }).where(eq(products.id, seed.product2Id)); // 2 were sold
+      const [line] = await getInvoiceItems(inv);
+      const r = await createReturnOp(retInput(inv, line.id, 2), TEST_OWNER);
+      expect(r.success).toBe(false);
+      expect(r.error).toMatch(/in stock/i);
+      expect((await stockOf(seed.product2Id)).stockQty).toBe(1);
+    });
+
+    it('returning goods on a paid invoice creates credit that can be refunded', async () => {
+      const s = await supplier('Paid');
+      const inv = await invoiceWithItems(s, 'PD', [{ productId: seed.product1Id, quantity: 4, unitCost: '1000' }]);
+      expect((await recordPaymentOp(cash(inv, '4000'), TEST_OWNER)).success).toBe(true);
+      const [line] = await getInvoiceItems(inv);
+      await createReturnOp(retInput(inv, line.id, 3), TEST_OWNER);
+
+      let [row] = await getInvoiceRows();
+      expect(row.status).toBe('paid');
+      expect(row.credit).toBe('3000.00');
+
+      expect((await recordRefundOp({ invoiceId: inv, refundDate: today, amount: '3000.01', method: 'cash' }, TEST_OWNER)).success).toBe(false);
+      const refund = await recordRefundOp({ invoiceId: inv, refundDate: today, amount: '1200', method: 'bank_transfer', reference: 'R-1' }, TEST_OWNER);
+      expect(refund.success).toBe(true);
+      [row] = await getInvoiceRows();
+      expect(row.credit).toBe('1800.00');
+
+      // the paid money cannot be deleted while credit from it was already refunded
+      const pay = await db.select().from(supplierPayments);
+      expect((await deletePaymentOp(pay[0].id, TEST_OWNER)).success).toBe(false);
+      // and the return cannot be undone either
+      const [ret] = await db.select().from(supplierReturns);
+      expect((await deleteReturnOp(ret.id, TEST_OWNER)).success).toBe(false);
+
+      expect((await deleteRefundOp(refund.data!.id, TEST_OWNER)).success).toBe(true);
+      expect((await getInvoiceRows())[0].credit).toBe('3000.00');
+    });
+
+    it('credit from one invoice can pay another invoice of the same supplier', async () => {
+      const s = await supplier('Credit');
+      const other = await supplier('Other');
+      const a = await invoiceWithItems(s, 'CA', [{ productId: seed.product1Id, quantity: 2, unitCost: '1000' }]);
+      const b = await invoiceWithItems(s, 'CB', [{ productId: seed.product3Id, quantity: 1, unitCost: '1500' }]);
+      const c = await invoiceWithItems(other, 'CC', [{ productId: seed.product3Id, quantity: 1, unitCost: '900' }]);
+      await recordPaymentOp(cash(a, '2000'), TEST_OWNER);
+      const [line] = await getInvoiceItems(a);
+      await createReturnOp(retInput(a, line.id, 2), TEST_OWNER); // 2000 credit on A
+
+      const apply = (to: number, amount: string) =>
+        applyCreditOp({ fromInvoiceId: a, toInvoiceId: to, date: today, amount }, TEST_OWNER);
+      expect((await apply(c, '100')).success).toBe(false); // other supplier
+      expect((await apply(b, '1600')).success).toBe(false); // more than B owes
+      expect((await apply(b, '1500')).success).toBe(true);
+
+      const rows = await getInvoiceRows();
+      const A = rows.find((r) => r.id === a)!;
+      const B = rows.find((r) => r.id === b)!;
+      expect(B.status).toBe('paid');
+      expect(A.credit).toBe('500.00');
+      expect((await apply(b, '1')).success).toBe(false); // B is fully paid now
+    });
+
+    it('deleting a return puts the goods back; deleting an invoice takes its goods out', async () => {
+      const s = await supplier('Undo');
+      const inv = await invoiceWithItems(s, 'U1', [{ productId: seed.product1Id, quantity: 4, unitCost: '1000' }]);
+      const [line] = await getInvoiceItems(inv);
+      await createReturnOp(retInput(inv, line.id, 2), TEST_OWNER);
+      expect((await stockOf(seed.product1Id)).stockQty).toBe(12);
+
+      expect((await deleteInvoiceOp(inv, TEST_OWNER)).success).toBe(false); // has a return
+      const [ret] = await db.select().from(supplierReturns);
+      expect((await deleteReturnOp(ret.id, TEST_OWNER)).success).toBe(true);
+      expect((await stockOf(seed.product1Id)).stockQty).toBe(14);
+
+      expect((await deleteInvoiceOp(inv, TEST_OWNER)).success).toBe(true);
+      expect((await stockOf(seed.product1Id)).stockQty).toBe(10);
+    });
+
+    it('refuses to delete an invoice whose goods were already sold', async () => {
+      const s = await supplier('Gone');
+      const inv = await invoiceWithItems(s, 'G1', [{ productId: seed.product1Id, quantity: 4, unitCost: '1000' }]);
+      await db.update(products).set({ stockQty: 2 }).where(eq(products.id, seed.product1Id)); // 12 sold
+      const r = await deleteInvoiceOp(inv, TEST_OWNER);
+      expect(r.success).toBe(false);
+      expect((await stockOf(seed.product1Id)).stockQty).toBe(2);
+      expect(await getInvoiceRows()).toHaveLength(1);
+    });
+
+    it('only owners can return goods or record refunds', async () => {
+      const s = await supplier('Auth');
+      const inv = await invoiceWithItems(s, 'AU', [{ productId: seed.product1Id, quantity: 1, unitCost: '10' }]);
+      const [line] = await getInvoiceItems(inv);
+      expect((await createReturnOp(retInput(inv, line.id, 1), TEST_CASHIER)).success).toBe(false);
+      expect((await recordRefundOp({ invoiceId: inv, refundDate: today, amount: '1', method: 'cash' }, TEST_CASHIER)).success).toBe(false);
+    });
+
+    it('compares the same product across suppliers, cheapest first, with hints for the invoice form', async () => {
+      const a = await supplier('Dear Co');
+      const b = await supplier('Cheap Co');
+      await invoiceWithItems(a, 'D1', [{ productId: seed.product1Id, quantity: 10, unitCost: '3200' }]);
+      await invoiceWithItems(b, 'C1', [{ productId: seed.product1Id, quantity: 20, unitCost: '2900' }]);
+      await savePriceItemOp(
+        { supplierId: a, itemName: 'Pads', partNumber: '04465-TEST1', unitPrice: '3100', priceDate: today },
+        TEST_OWNER,
+      );
+      const [ai] = await getInvoiceItems((await getInvoiceRows({ supplierId: a }))[0].id);
+      await createReturnOp(retInput(ai.id ? (await getInvoiceRows({ supplierId: a }))[0].id : 0, ai.id, 2), TEST_OWNER);
+
+      const history = await getProductSupplierHistory(seed.product1Id);
+      expect(history.map((h) => h.supplierName)).toEqual(['Cheap Co', 'Dear Co']);
+      expect(history[0].lastUnitCost).toBe('2900.00');
+      expect(history[0].qtyBought).toBe(20);
+      expect(history[1].qtyReturned).toBe(2);
+      expect(history[1].quotedPrice).toBe('3100.00');
+
+      const hint = await getPurchaseHint(seed.product1Id, a);
+      expect(hint.fromSupplier?.unitCost).toBe('3200.00');
+      expect(hint.bestOther?.supplierName).toBe('Cheap Co');
+      expect(hint.bestOther?.unitCost).toBe('2900.00');
     });
   });
 });
